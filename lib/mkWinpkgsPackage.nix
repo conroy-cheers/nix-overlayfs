@@ -1,5 +1,6 @@
 # Author: Libor Štěpánek 2025
 {
+  lib,
   mkOverlayfsPackage,
   pkgs,
   diffs,
@@ -54,7 +55,7 @@
     unpackPhase = ''true'';
 
     buildInputs = with pkgs; [
-      wineWowPackages.full
+      self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg
       xorg.xorgserver
       util-linux
       mount
@@ -79,7 +80,7 @@
 
       # Last layer of installation, run installation and wait for WINE server to terminate
       buildPhaseUnshareScript = pkgs.writeShellScript "buildUnshare" ''
-        wine '${src}' ${silentFlag}
+        ${lib.getExe self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg} '${src}' ${silentFlag}
 
         wineserver --wait
       '';
@@ -184,7 +185,7 @@ in
   mkOverlayfsPackage {
     inherit basePackage executableName executablePath;
     overlayDependencies = overlayDependenciesPlusEnv;
-    interpreter = "${pkgs.wineWowPackages.full}/bin/wine";
+    interpreter = lib.getExe self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg;
     basePackageName = packageName;
     extraEnvCommands = ''
       export WINEPREFIX="$tempdir/overlay"

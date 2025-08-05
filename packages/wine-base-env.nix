@@ -1,6 +1,7 @@
 # Author: Libor Štěpánek 2025
 # the base environment included with all mkWinpkgsPackage packages
 {
+  lib,
   pkgs,
   stdenv,
   self,
@@ -11,17 +12,14 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = with pkgs;
   with self.outputs.lib.scripts; [
-    wineWowPackages.full
+    self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg
     xorg.xorgserver
     reg2json
     json2reg
     jd-diff-patch
   ];
 
-  src = pkgs.fetchurl {
-    url = "https://dl.winehq.org/wine/wine-mono/9.4.0/wine-mono-9.4.0-x86.msi";
-    sha256 = "z2FzrpS3np3hPZp0zbJWCohvw9Jx+Uiayxz9vZYcrLI=";
-  };
+  src = self.inputs.nix-gaming.packages.x86_64-linux.wine-mono;
 
   unpackPhase = "true";
 
@@ -38,7 +36,7 @@ stdenv.mkDerivation {
     export DISPLAY=:999
 
     # install mono
-    wine start /wait "mono.msi"
+    ${lib.getExe self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg} start /wait "mono.msi"
 
     wineserver --wait
 
