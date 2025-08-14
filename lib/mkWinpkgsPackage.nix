@@ -4,7 +4,8 @@
   mkWinePackage,
   pkgs,
   diffs,
-  self,
+
+  nix-overlayfs,
 }:
 {
   packageName,
@@ -17,7 +18,7 @@
   ...
 }:
 let
-  scripts = self.outputs.lib.scripts;
+  scripts = nix-overlayfs.lib.scripts;
 
   # Get path from package name, select the correct manifest file, convert it to JSON and import it as an attribute set
   manifest =

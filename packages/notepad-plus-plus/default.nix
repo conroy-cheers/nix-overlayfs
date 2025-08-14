@@ -1,9 +1,9 @@
 # Author: Libor Štěpánek 2025
 {
-  self,
   pkgs,
+  nix-overlayfs,
 }:
-self.outputs.lib.mkWinpkgsPackage {
+nix-overlayfs.lib.mkWinpkgsPackage {
   inherit pkgs;
   packageName = "Notepad++/Notepad++";
   executableName = "notepad++";

@@ -2,13 +2,20 @@
 # test cases for the json2reg script
 {
   pkgs,
-  self,
+  nix-overlayfs,
   ...
 }:
 pkgs.stdenv.mkDerivation {
   pname = "reg2json_test";
   version = "1.0.0";
-  nativeBuildInputs = with pkgs; with self.outputs.lib.scripts; [findutils diffutils json2reg];
+  nativeBuildInputs =
+    with pkgs;
+    with nix-overlayfs.lib.scripts;
+    [
+      findutils
+      diffutils
+      json2reg
+    ];
   src = ./.;
   buildPhase = ''
     for file in *.json; do

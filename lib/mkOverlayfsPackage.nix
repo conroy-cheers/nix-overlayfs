@@ -98,4 +98,8 @@ stdenv.mkDerivation {
     mkdir $out
     mv bin basePackage libexec $out/
   '';
+
+  passthru = {
+    inherit executablePath;
+  };
 }

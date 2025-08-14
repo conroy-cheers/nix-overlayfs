@@ -22,34 +22,103 @@
 
   outputs =
     {
-      self,
       nixpkgs,
-      nix-gaming,
-    }:
+      ...
+    }@inputs:
     let
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      transposeAttrs =
+        attrs:
+        nixpkgs.lib.foldlAttrs (
+          acc: outer: inner:
+          nixpkgs.lib.recursiveUpdate acc (nixpkgs.lib.mapAttrs (k: v: { ${outer} = v; }) inner)
+        ) { } attrs;
+
+      generateSystems = (
+        {
+          self,
+          nixpkgs,
+          nix-gaming,
+        }@inputs:
+        nixpkgs.lib.genAttrs [ "x86_64-linux" ] (
+          system:
+          let
+            p = {
+              inherit self;
+              pkgs = nixpkgs.legacyPackages.${system};
+              nix-gaming = nix-gaming.packages.${system};
+            };
+
+            lib = import ./lib {
+              inherit (p) pkgs nix-gaming;
+              inherit nix-overlayfs;
+            };
+
+            packages = (
+              import ./packages {
+                inherit (p) pkgs nix-gaming;
+                inherit nix-overlayfs;
+              }
+            );
+
+            # Generate the app entries based on the presence of the 'executableName' meta-attribute in the derivations
+            apps =
+              with p.pkgs.lib.attrsets;
+              let
+                derivations = filterAttrs (
+                  name: value: (isDerivation value) && (value.meta.executableName != "")
+                ) packages;
+              in
+              concatMapAttrs (name: value: {
+                ${name} = {
+                  type = "app";
+                  program = "${value}/bin/${value.meta.executableName}";
+                };
+              }) derivations;
+
+            checks = import ./tests {
+              inherit nix-overlayfs;
+              inherit (p) pkgs;
+            };
+
+            nix-overlayfs = packages // {
+              inherit lib;
+            };
+          in
+          {
+            inherit
+              lib
+              apps
+              checks
+              ;
+
+            packages = with nixpkgs.lib; (filterAttrs (n: pkg: isDerivation pkg) packages);
+          }
+        )
+      );
     in
-    {
-      inherit (self) inputs;
+    transposeAttrs (generateSystems inputs);
 
-      lib = import ./lib { inherit self pkgs; };
-      packages.x86_64-linux = import ./packages { inherit self pkgs; };
+  # {
+  #   inherit (self) inputs;
 
-      # Generating the app entries based on the presence of the 'executableName' meta-attribute in the derivations
-      apps.x86_64-linux =
-        with self.inputs.nixpkgs.lib.attrsets;
-        let
-          derivations = filterAttrs (
-            name: value: (isDerivation value) && (value.meta.executableName != "")
-          ) self.outputs.packages.x86_64-linux;
-        in
-        concatMapAttrs (name: value: {
-          ${name} = {
-            type = "app";
-            program = "${value}/bin/${value.meta.executableName}";
-          };
-        }) derivations;
+  #   lib = import ./lib { inherit self pkgs; };
+  #   packages.x86_64-linux = import ./packages { inherit self pkgs; };
 
-      checks.x86_64-linux = import ./tests { inherit self pkgs; };
-    };
+  #   # Generating the app entries based on the presence of the 'executableName' meta-attribute in the derivations
+  #   apps.x86_64-linux =
+  #     with self.inputs.nixpkgs.lib.attrsets;
+  #     let
+  #       derivations = filterAttrs (
+  #         name: value: (isDerivation value) && (value.meta.executableName != "")
+  #       ) self.outputs.packages.x86_64-linux;
+  #     in
+  #     concatMapAttrs (name: value: {
+  #       ${name} = {
+  #         type = "app";
+  #         program = "${value}/bin/${value.meta.executableName}";
+  #       };
+  #     }) derivations;
+
+  #   checks.x86_64-linux = import ./tests { inherit self pkgs; };
+  # };
 }

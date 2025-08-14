@@ -1,19 +1,25 @@
 # Author: Libor Štěpánek 2025
 {
   pkgs,
-  self,
-  ...
+  nix-gaming,
+  nix-overlayfs,
 }:
-rec {
-  scripts = pkgs.callPackage ./scripts { };
-  mkOverlayfsPackage = pkgs.callPackage ./mkOverlayfsPackage.nix { };
-  mkWinePackage = pkgs.callPackage ./mkWinePackage.nix { inherit diffs mkOverlayfsPackage self; };
-  mkWinpkgsPackage = pkgs.callPackage ./mkWinpkgsPackage.nix {
-    inherit diffs mkWinePackage self;
+let
+  newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
+  defaults = {
+    inherit (nix-gaming) wine-tkg wine-mono;
+    inherit (nix-overlayfs) wine-base-env autohotkey;
+    inherit nix-overlayfs;
   };
+in
+pkgs.lib.makeScope newScope (self: with self; {
+  scripts = callPackage ./scripts { };
+  mkOverlayfsPackage = callPackage ./mkOverlayfsPackage.nix { };
+  mkWinePackage = callPackage ./mkWinePackage.nix { };
+  mkWinpkgsPackage = callPackage ./mkWinpkgsPackage.nix { };
   diffs = {
     system = ./diffs/system.json.diff;
     user = ./diffs/user.json.diff;
     dupes = builtins.readFile ./diffs/windows_duplicates;
   };
-}
+})

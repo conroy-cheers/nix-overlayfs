@@ -1,11 +1,25 @@
-# Author: Libor Štěpánek 2025
-# automatically import all .nix files in this directory
 {
-  self,
   pkgs,
+  nix-gaming,
+  nix-overlayfs,
 }:
-with pkgs; let
-  packageFiles = with builtins; removeAttrs (readDir ./.) ["default.nix"];
-  mapFunction = name: value: {"${lib.strings.removeSuffix ".nix" name}" = callPackage (builtins.toPath ./. + "/${name}") {inherit self;};};
+
+let
+  newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
+  defaults = {
+    inherit (nix-gaming) wine-tkg wine-mono;
+    inherit nix-overlayfs;
+  };
 in
-  lib.concatMapAttrs mapFunction packageFiles
+pkgs.lib.makeScope newScope (
+  self: with self; {
+    wine-base-env = callPackage ./wine-base-env { };
+    autohotkey = callPackage ./autohotkey { };
+    dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
+    halo-custom-edition-1-00 = callPackage ./halo-custom-edition-1-00 { };
+    msvcp60 = callPackage ./msvcp60 { };
+    msxml4 = callPackage ./msxml4 { };
+    notepad-plus-plus = callPackage ./notepad-plus-plus { };
+    vlc = callPackage ./vlc { };
+  }
+)

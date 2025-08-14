@@ -4,22 +4,27 @@
   lib,
   pkgs,
   stdenv,
-  self,
+
+  wine-tkg,
+  wine-mono,
+  nix-overlayfs,
 }:
 stdenv.mkDerivation {
   pname = "wine-base-env";
   version = "0.0.1";
 
-  nativeBuildInputs = with pkgs;
-  with self.outputs.lib.scripts; [
-    self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg
-    xorg.xorgserver
-    reg2json
-    json2reg
-    jd-diff-patch
-  ];
+  nativeBuildInputs =
+    with pkgs;
+    with nix-overlayfs.lib.scripts;
+    [
+      wine-tkg
+      xorg.xorgserver
+      reg2json
+      json2reg
+      jd-diff-patch
+    ];
 
-  src = self.inputs.nix-gaming.packages.x86_64-linux.wine-mono;
+  src = wine-mono;
 
   unpackPhase = "true";
 
@@ -36,7 +41,7 @@ stdenv.mkDerivation {
     export DISPLAY=:999
 
     # install mono
-    ${lib.getExe self.inputs.nix-gaming.packages.x86_64-linux.wine-tkg} start /wait "mono.msi"
+    ${lib.getExe wine-tkg} start /wait "mono.msi"
 
     wineserver --wait
 
@@ -45,10 +50,10 @@ stdenv.mkDerivation {
 
     # convert registry to JSON, apply patches
     reg2json ./prefix/system.reg > ./system.json
-    jd -f=merge -o ./prefix/system.json -p "${self.outputs.lib.diffs.system}" "./system.json" || true
+    jd -f=merge -o ./prefix/system.json -p "${nix-overlayfs.lib.diffs.system}" "./system.json" || true
     json2reg ./prefix/system.json ./prefix/system.reg
     reg2json ./prefix/user.reg > ./prefix/user.json
-    jd -f=merge -o ./prefix/system.json -p "${self.outputs.lib.diffs.user}" "./user.json" || true
+    jd -f=merge -o ./prefix/system.json -p "${nix-overlayfs.lib.diffs.user}" "./user.json" || true
     json2reg ./prefix/user.json ./prefix/user.reg
     reg2json ./prefix/userdef.reg > ./prefix/userdef.json
     json2reg ./prefix/userdef.json ./prefix/userdef.reg
