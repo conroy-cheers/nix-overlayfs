@@ -53,12 +53,11 @@
               inherit nix-overlayfs;
             };
 
-            packages = (
-              import ./packages {
+            packages =
+              (import ./packages {
                 inherit (p) pkgs nix-gaming;
                 inherit nix-overlayfs;
-              }
-            );
+              }).winePackages;
 
             # Generate the app entries based on the presence of the 'executableName' meta-attribute in the derivations
             apps =

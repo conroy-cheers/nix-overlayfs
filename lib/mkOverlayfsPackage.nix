@@ -100,6 +100,6 @@ stdenv.mkDerivation {
   '';
 
   passthru = {
-    inherit executablePath;
+    inherit basePackage executablePath;
   };
 }

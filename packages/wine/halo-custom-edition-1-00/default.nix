@@ -1,6 +1,7 @@
 {
   pkgs,
   nix-overlayfs,
+  msvcp60,
   msxml4,
 }:
 nix-overlayfs.lib.mkWinePackage {
@@ -10,7 +11,7 @@ nix-overlayfs.lib.mkWinePackage {
     url = "http://halo1hub.com/downloads/setup/halocesetup_en_1.00.exe";
     hash = "sha256-TW8bm9s8LUP7pDrgAlf13+W1JeOHgHdrpG/ci3UKf7Y=";
   };
-  ahkScript = ./install.ahk;
-  overlayDependencies = [ msxml4 ];
+  ahkScript = builtins.readFile ./install.ahk;
+  overlayDependencies = [ msvcp60 msxml4 ];
   packageName = "halo-custom-edition";
 }
