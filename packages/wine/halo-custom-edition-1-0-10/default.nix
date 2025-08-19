@@ -3,6 +3,7 @@
   nix-overlayfs,
   msvcp60,
   msxml4,
+  crypt32,
   halo-custom-edition-1-00,
 }:
 nix-overlayfs.lib.mkWinePackage rec {
@@ -33,6 +34,7 @@ nix-overlayfs.lib.mkWinePackage rec {
   overlayDependencies = [
     msvcp60
     msxml4
+    crypt32
     halo-custom-edition-1-00
   ];
   packageName = "halo-custom-edition";

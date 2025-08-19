@@ -16,6 +16,7 @@ pkgs.lib.makeScope newScope (
   self: with self; {
     wine-base-env = callPackage ./wine-base-env { };
     autohotkey = callPackage ./autohotkey { };
+    crypt32 = callPackage ./crypt32 { };
     dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
     halo-custom-edition-1-00 = callPackage ./halo-custom-edition-1-00 { };
     halo-custom-edition-1-0-10 = callPackage ./halo-custom-edition-1-0-10 { };

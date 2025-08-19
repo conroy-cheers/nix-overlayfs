@@ -154,9 +154,9 @@ let
           # copy dependencies to working directory, merge all registry JSONs, mark files as writable
           for i in ''${!deps[@]}; do
             if [[ $i != 0 ]]; then
-              jq -s '.[0] * .[1]' system.json "''${deps[$i]}/basePackage/system.json" | sponge system.json
-              jq -s '.[0] * .[1]' user.json "''${deps[$i]}/basePackage/user.json" | sponge user.json
-              jq -s '.[0] * .[1]' userdef.json "''${deps[$i]}/basePackage/userdef.json" | sponge userdef.json
+              jq -s '.[0] * .[1]' system.json "''${deps[$i]}/basePackage/system.json" | sponge system.json || true
+              jq -s '.[0] * .[1]' user.json "''${deps[$i]}/basePackage/user.json" | sponge user.json || true
+              jq -s '.[0] * .[1]' userdef.json "''${deps[$i]}/basePackage/userdef.json" | sponge userdef.json || true
             fi
             cp --recursive "''${deps[$i]}"/basePackage/* ./wineprefix/
             chmod --recursive +rw ./wineprefix
@@ -186,6 +186,8 @@ let
           chmod --recursive a+rw ./
           rm --recursive --force "./data/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
           find ./data/ -type d -empty -delete
+
+          touch ./data/system.reg ./data/user.reg
 
           # Remove entries with non-deterministic values
           sed -i '/^"InstallDate"=/d' ./data/system.reg
