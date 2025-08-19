@@ -21,12 +21,17 @@ WaitForText(WinTitle, TargetText, Timeout := 0) {
     }
 }
 
-; Wait until the EULA window appears
+; Wait until the EULA window appears 
 WinWait, %EulaWinTitle%
 ; Activate and click Accept
 WinActivate, %EulaWinTitle%
 ControlClick, Button1
 WinWaitClose, %EulaWinTitle%
+
+
+; "Setup cannot find a sound card"
+Sleep, 2000
+Send, {Enter}
 
 ; Wait until the installer window exists
 WinWait, %WinTitle%

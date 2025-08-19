@@ -14,4 +14,8 @@ nix-overlayfs.lib.mkWinePackage {
   ahkScript = builtins.readFile ./install.ahk;
   overlayDependencies = [ msvcp60 msxml4 ];
   packageName = "halo-custom-edition";
+  executableName = "haloce";
+  executablePath = "/drive_c/Program Files (x86)/Microsoft Games/Halo Custom Edition/haloce.exe";
+  winePkg = pkgs.wineWow64Packages.stagingFull;
+  launchVncServer = true;
 }

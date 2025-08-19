@@ -5,7 +5,7 @@
   pkgs,
   diffs,
 
-  wine-tkg,
+  wine,
   wine-base-env,
   autohotkey,
   nix-overlayfs,
@@ -14,6 +14,7 @@
   pname,
   version,
   src,
+  winePkg ? wine,
   packageName,
   executableName ? "",
   executablePath ? "",
@@ -22,6 +23,7 @@
   extraPathsToInclude ? [ ],
   silentFlags ? "",
   ahkScript ? "",
+  launchVncServer ? false,
   unshareInstall ? null,
   ...
 }:
@@ -35,9 +37,9 @@ let
   ahkScriptPresent = ahkScript != "";
 
   overlayDependenciesPlusEnv = [
-    wine-base-env
+    (wine-base-env.override { wine = winePkg; })
   ]
-  ++ (lib.optionals (ahkScript != "") [
+  ++ (lib.optionals ahkScriptPresent [
     autohotkey
   ])
   ++ overlayDependencies;
@@ -48,31 +50,54 @@ let
   # Create the base package for mkOverlayfsPackage
   basePackage =
     let
-      # Last layer of installation, run installation and wait for WINE server to terminate
-      buildPhaseUnshareScript = pkgs.writeShellScript "buildUnshare" (
-        if unshareInstall != null then
-          (unshareInstall {
-            wineExe = lib.getExe wine-tkg;
-          })
-        else
+      defaultUnshareInstallSteps = (
+        [
           ''
-            ${lib.getExe wine-tkg} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
+            ${lib.getExe winePkg} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
+          ''
+        ]
+        ++ (lib.optionals ahkScriptPresent [
+          ''
+            cat > unattended-install.ahk <<'EOF'
+            ${ahkScript}
+            EOF
 
-            ${
-              if ahkScriptPresent then
-                ''
-                  cat > unattended-install.ahk <<'EOF'
-                  ${ahkScript}
-                  EOF
-
-                  ${lib.getExe wine-tkg} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
-                ''
-              else
-                ""
-            }
-
+            ${lib.getExe winePkg} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
+          ''
+        ])
+        ++ [
+          ''
             wineserver --wait
           ''
+        ]
+      );
+
+      # Last layer of installation, run installation and wait for WINE server to terminate
+      buildPhaseUnshareScript = pkgs.writeShellScript "buildUnshare" (
+        (lib.concatStringsSep "\n" (
+          (lib.optionals launchVncServer [
+            ''
+              sleep 5
+              ${lib.getExe pkgs.x11vnc} \
+                -viewonly \
+                -display "$DISPLAY" \
+                -shared -noxdamage -wait 5 &
+              X11VNC_PID=$!
+              sleep 5
+            ''
+          ])
+          ++ (lib.optionals (unshareInstall == null) defaultUnshareInstallSteps)
+          ++ (lib.optionals (unshareInstall != null) [
+            (unshareInstall {
+              wineExe = lib.getExe winePkg;
+            })
+          ])
+          ++ (lib.optionals launchVncServer [
+            ''
+              kill $X11VNC_PID
+            ''
+          ])
+        ))
       );
 
       # Second build script, run inside mount namespace
@@ -101,7 +126,7 @@ let
       unpackPhase = ''true'';
 
       buildInputs = with pkgs; [
-        wine-tkg
+        winePkg
         xorg.xorgserver
         util-linux
         mount
@@ -111,6 +136,7 @@ let
         scripts.json2reg
         scripts.reg2json
         gnused
+        moreutils
       ];
 
       buildPhase =
@@ -128,9 +154,9 @@ let
           # copy dependencies to working directory, merge all registry JSONs, mark files as writable
           for i in ''${!deps[@]}; do
             if [[ $i != 0 ]]; then
-              jd -f=merge -p -o system.json "''${deps[$i]}/basePackage/system.json" system.json || true
-              jd -f=merge -p -o user.json "''${deps[$i]}/basePackage/user.json" user.json || true
-              jd -f=merge -p -o userdef.json "''${deps[$i]}/basePackage/userdef.json" userdef.json || true
+              jq -s '.[0] * .[1]' system.json "''${deps[$i]}/basePackage/system.json" | sponge system.json
+              jq -s '.[0] * .[1]' user.json "''${deps[$i]}/basePackage/user.json" | sponge user.json
+              jq -s '.[0] * .[1]' userdef.json "''${deps[$i]}/basePackage/userdef.json" | sponge userdef.json
             fi
             cp --recursive "''${deps[$i]}"/basePackage/* ./wineprefix/
             chmod --recursive +rw ./wineprefix
@@ -143,6 +169,8 @@ let
 
           # copy converted files to prefix directory
           cp system.reg user.reg userdef.reg ./wineprefix/
+
+          # cat ./wineprefix/system.reg
 
           export WINEPREFIX=$PWD/merged
           export temp=$(mktemp -d)
@@ -203,7 +231,7 @@ in
 mkOverlayfsPackage {
   inherit basePackage executableName executablePath;
   overlayDependencies = overlayDependenciesPlusEnv;
-  interpreter = lib.getExe wine-tkg;
+  interpreter = lib.getExe winePkg;
   basePackageName = packageName;
   extraEnvCommands = ''
     export WINEPREFIX="$tempdir/overlay"

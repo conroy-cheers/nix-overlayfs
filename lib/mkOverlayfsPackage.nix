@@ -100,6 +100,6 @@ stdenv.mkDerivation {
   '';
 
   passthru = {
-    inherit basePackage executablePath;
+    inherit basePackage executablePath overlayDependencies;
   };
 }

@@ -5,7 +5,7 @@
   pkgs,
   stdenv,
 
-  wine-tkg,
+  wine,
   wine-mono,
   nix-overlayfs,
 }:
@@ -17,7 +17,7 @@ stdenv.mkDerivation {
     with pkgs;
     with nix-overlayfs.lib.scripts;
     [
-      wine-tkg
+      wine
       xorg.xorgserver
       reg2json
       json2reg
@@ -41,7 +41,7 @@ stdenv.mkDerivation {
     export DISPLAY=:999
 
     # install mono
-    ${lib.getExe wine-tkg} start /wait "mono.msi"
+    ${lib.getExe wine} start /wait "mono.msi"
 
     wineserver --wait
 
