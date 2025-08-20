@@ -2,7 +2,7 @@
 # test cases for the json2reg script
 {
   pkgs,
-  nix-overlayfs,
+  overlayfsLib,
   ...
 }:
 pkgs.stdenv.mkDerivation {
@@ -10,7 +10,7 @@ pkgs.stdenv.mkDerivation {
   version = "1.0.0";
   nativeBuildInputs =
     with pkgs;
-    with nix-overlayfs.lib.scripts;
+    with overlayfsLib.scripts;
     [
       findutils
       diffutils

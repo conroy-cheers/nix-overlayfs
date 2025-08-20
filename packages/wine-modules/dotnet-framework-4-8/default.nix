@@ -2,9 +2,9 @@
 # example of a non-executable package
 {
   wine,
-  nix-overlayfs,
+  overlayfsLib,
 }:
-nix-overlayfs.lib.mkWinpkgsPackage {
+overlayfsLib.mkWinpkgsPackage {
   inherit wine;
   packageName = "Microsoft/DotNet/Framework/DeveloperPack_4"; # the package name can represent a longer folder structure
   version = "4.8";

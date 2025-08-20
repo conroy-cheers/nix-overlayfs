@@ -2,14 +2,14 @@
 # auto-import folder content
 {
   pkgs,
-  nix-overlayfs,
+  overlayfsLib,
 }:
 with pkgs;
 let
   packageFiles = with builtins; removeAttrs (readDir ./.) [ "default.nix" ];
   mapFunction = name: value: {
     "${lib.strings.removeSuffix ".nix" name}" = callPackage (builtins.toPath ./. + "/${name}") {
-      inherit nix-overlayfs;
+      inherit overlayfsLib;
     };
   };
 in

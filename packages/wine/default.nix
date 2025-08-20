@@ -1,30 +1,48 @@
 {
-  pkgs,
-  nix-gaming,
-  nix-overlayfs,
+  lib,
+  wine,
+  wineArch ? "wow64",
+  runCommand,
+  makeWrapper,
+  symlinkJoin,
 }:
 
 let
-  newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
-  defaults = {
-    inherit (nix-gaming) wine-mono wine-tkg wine-ge;
-    wine = nix-gaming.wine-tkg;
-    inherit nix-overlayfs;
-  };
+  wineExeName =
+    {
+      "win32" = "wine";
+      "win64" = "wine64";
+      "wow64" = "wine";
+    }
+    .${wineArch};
+
+  wineWrapped =
+    runCommand "${wine}-${wineArch}"
+      {
+        nativeBuildInputs = [ makeWrapper ];
+
+        meta.mainProgram = "wine-wrapped";
+      }
+      ''
+        makeWrapper ${lib.getExe' wine wineExeName} $out/bin/wine-wrapped \
+          --set WINEARCH "${wineArch}"
+      '';
 in
-pkgs.lib.makeScope newScope (
-  self: with self; {
-    wine-base-env = callPackage ./wine-base-env { };
-    autohotkey = callPackage ./autohotkey { };
-    crypt32-x86 = callPackage ./crypt32-x86 { };
-    crypt32-x64 = callPackage ./crypt32-x64 { };
-    dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
-    halo-custom-edition-1-00 = callPackage ./halo-custom-edition-1-00 { };
-    halo-custom-edition-1-0-10 = callPackage ./halo-custom-edition-1-0-10 { };
-    mingw = callPackage ./mingw { };
-    msvcp60 = callPackage ./msvcp60 { };
-    msxml4 = callPackage ./msxml4 { };
-    notepad-plus-plus = callPackage ./notepad-plus-plus { };
-    vlc = callPackage ./vlc { };
-  }
-)
+symlinkJoin {
+  pname = "${if (wine ? "pname") then wine.pname else "wine"}-${wineArch}-wrapped";
+  version = if (wine ? "version") then wine.version else (lib.getVersion wine);
+
+  paths = [
+    wine
+    wineWrapped
+  ];
+  meta = wine.meta // {
+    mainProgram = "wine-wrapped";
+  };
+
+  passthru = {
+    inherit wineArch;
+    programFiles32Path = "/drive_c/Program Files" + (if wineArch == "win32" then "" else " (x86)");
+    programFilesPath = "/drive_c/Program Files";
+  };
+}

@@ -1,8 +1,8 @@
 {
   wine,
-  nix-overlayfs,
+  overlayfsLib,
 }:
-nix-overlayfs.lib.mkWinpkgsPackage {
+overlayfsLib.mkWinpkgsPackage {
   inherit wine;
   packageName = "CodeBlocks/CodeBlocks/MinGW";
   version = "25.03";

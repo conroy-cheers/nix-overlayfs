@@ -2,14 +2,14 @@
 # test cases for the reg2json script
 {
   pkgs,
-  nix-overlayfs,
+  overlayfsLib,
 }:
 pkgs.stdenv.mkDerivation {
   pname = "reg2json_test";
   version = "1.0.0";
   nativeBuildInputs =
     with pkgs;
-    with nix-overlayfs.lib.scripts;
+    with overlayfsLib.scripts;
     [
       findutils
       jd-diff-patch

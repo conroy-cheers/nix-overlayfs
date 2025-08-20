@@ -1,16 +1,12 @@
 # Author: Libor Štěpánek 2025
 {
   pkgs,
-  nix-gaming,
-  nix-overlayfs,
+  overlayfsLib,
 }:
 let
   newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
   defaults = {
-    inherit (nix-gaming) wine-mono wine-tkg wine-ge;
-    wine = nix-gaming.wine-tkg;
-    inherit (nix-overlayfs) wine-base-env autohotkey;
-    inherit nix-overlayfs;
+    inherit overlayfsLib;
   };
 in
 pkgs.lib.makeScope newScope (

@@ -8,7 +8,7 @@
 
   yj,
 
-  nix-overlayfs,
+  overlayfsLib,
 }:
 {
   wine,
@@ -19,10 +19,11 @@
   overlayDependencies ? [ ],
   extraPathsToRemove ? [ ],
   silentFlags ? null,
+  launchVncServer ? false,
   ...
 }:
 let
-  scripts = nix-overlayfs.lib.scripts;
+  scripts = overlayfsLib.scripts;
 
   # Get path from package name, select the correct manifest file, convert it to JSON and import it as an attribute set
   manifest =
@@ -36,11 +37,17 @@ let
     builtins.fromJSON (builtins.readFile "${manifest-json}");
 
   # Select the installer files based on the architecture
-  installer = builtins.head (builtins.filter (x: (x.InstallerType or "exe") != "zip") (
-    (builtins.filter (x: x.Architecture == "x64") manifest.Installers)
-    ++ (builtins.filter (x: x.Architecture == "x86") manifest.Installers)
-    ++ (builtins.filter (x: x.Architecture == "neutral") manifest.Installers)
-  ));
+  installer = builtins.head (
+    builtins.filter (x: (x.InstallerType or "exe") != "zip") (
+      (lib.optionals (wine.wineArch != "win32") (
+        builtins.filter (x: x.Architecture == "x64") manifest.Installers
+      ))
+      ++ (lib.optionals (wine.wineArch == "win32") (
+        builtins.filter (x: x.Architecture == "x86") manifest.Installers
+      ))
+      ++ (builtins.filter (x: x.Architecture == "neutral") manifest.Installers)
+    )
+  );
 
   # Group installer types for silent flag selection
   installerType = installer.InstallerType or manifest.InstallerType or "exe";
@@ -75,5 +82,6 @@ mkWinePackage {
     executablePath
     overlayDependencies
     extraPathsToRemove
+    launchVncServer
     ;
 }

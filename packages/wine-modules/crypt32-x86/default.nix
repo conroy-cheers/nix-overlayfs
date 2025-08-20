@@ -2,13 +2,13 @@
   lib,
   fetchurl,
   wine,
-  nix-overlayfs,
+  overlayfsLib,
   cabextract,
 }:
 let
   installPath = "windows/system32";
 in
-nix-overlayfs.lib.mkWinePackage {
+overlayfsLib.mkWinePackage {
   inherit wine;
   pname = "crypt32-x86";
   version = "6.1";

@@ -4,6 +4,7 @@
   stdenv,
 }: {
   basePackage,
+  workingDirectory ? null,
   executablePath,
   executableName,
   overlayDependencies ? [],
@@ -77,7 +78,10 @@ stdenv.mkDerivation {
         ${extraPreLaunchCommands}
 
         # Launching the user namespace to map the original user and running the specified application
-        ${pkgs.util-linux}/bin/unshare --map-user="$originalUser" ${interpreter} "$tempdir/overlay/${executablePath}" "$@"
+        ${pkgs.util-linux}/bin/unshare \
+          --map-user="$originalUser" \
+          ${if workingDirectory != null then "--wd \"$tempdir/overlay/${workingDirectory}\"" else ""} \
+          ${interpreter} "$tempdir/overlay/${executablePath}" "$@"
       '';
   in ''
     mkdir bin libexec

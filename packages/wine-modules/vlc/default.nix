@@ -2,13 +2,13 @@
 # example with a single dependency
 {
   wine,
-  nix-overlayfs,
+  overlayfsLib,
   dotnet-framework-4-8,
 }:
-nix-overlayfs.lib.mkWinpkgsPackage {
+overlayfsLib.mkWinpkgsPackage {
   inherit wine;
   packageName = "VideoLAN/VLC";
   executableName = "vlc";
-  executablePath = "/drive_c/Program Files/VideoLAN/VLC/vlc.exe";
+  executablePath = "${wine.programFiles32Path}/VideoLAN/VLC/vlc.exe";
   overlayDependencies = [ dotnet-framework-4-8 ];
 }

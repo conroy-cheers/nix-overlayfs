@@ -2,14 +2,14 @@
   lib,
   fetchurl,
   wine,
-  nix-overlayfs,
+  overlayfsLib,
   cabextract,
 }:
 let
   cabPath = "amd64_microsoft-windows-crypt32-dll_31bf3856ad364e35_6.1.7601.17514_none_b995c74af473511b/crypt32.dll";
   installPath = "windows/syswow64";
 in
-nix-overlayfs.lib.mkWinePackage {
+overlayfsLib.mkWinePackage {
   inherit wine;
   pname = "crypt32-x64";
   version = "6.1";

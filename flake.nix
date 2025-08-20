@@ -10,6 +10,9 @@
       url = "github:fufexan/nix-gaming";
       # inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-gaming-legacy = {
+      url = "github:fufexan/nix-gaming?ref=97bd4c09876482bef50fdcea8ce3c55aa8892fbf";
+    };
   };
 
   nixConfig = {
@@ -38,6 +41,7 @@
           self,
           nixpkgs,
           nix-gaming,
+          nix-gaming-legacy,
         }@inputs:
         nixpkgs.lib.genAttrs [ "x86_64-linux" ] (
           system:
@@ -46,56 +50,42 @@
               inherit self;
               pkgs = nixpkgs.legacyPackages.${system};
               nix-gaming = nix-gaming.packages.${system};
+              nix-gaming-legacy = nix-gaming-legacy.packages.${system};
             };
 
             lib = import ./lib {
-              inherit (p) pkgs nix-gaming;
-              inherit nix-overlayfs;
+              inherit (p) pkgs;
+              inherit overlayfsLib;
             };
 
-            packages =
-              (import ./packages {
-                inherit (p) pkgs nix-gaming;
-                inherit nix-overlayfs;
-              }).winePackages;
+            winePackageSets = (
+              import ./packages {
+                inherit (p) pkgs nix-gaming nix-gaming-legacy;
+                inherit overlayfsLib;
+              }
+            );
 
-            # Generate the app entries based on the presence of the 'executableName' meta-attribute in the derivations
-            apps =
-              with p.pkgs.lib.attrsets;
-              let
-                derivations = filterAttrs (
-                  name: value: (isDerivation value) && (value.meta.executableName != "")
-                ) packages;
-              in
-              concatMapAttrs (name: value: {
-                ${name} = {
-                  type = "app";
-                  program = "${value}/bin/${value.meta.executableName}";
-                };
-              }) derivations;
+            appsListing = import ./apps { inherit winePackageSets; };
 
             checks = import ./tests {
-              inherit nix-overlayfs;
+              inherit overlayfsLib;
               inherit (p) pkgs;
             };
 
-            nix-overlayfs = packages // {
-              inherit lib;
-            };
+            overlayfsLib = lib;
           in
           {
-            inherit
-              lib
-              apps
-              checks
-              ;
-
-            packages = with nixpkgs.lib; (filterAttrs (n: pkg: isDerivation pkg) packages);
+            inherit lib checks;
+            inherit (appsListing) apps packages;
+            inherit winePackageSets;
           }
         )
       );
     in
-    transposeAttrs (generateSystems inputs);
+    (transposeAttrs (generateSystems inputs))
+    // {
+      inherit inputs;
+    };
 
   # {
   #   inherit (self) inputs;

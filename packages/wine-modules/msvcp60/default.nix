@@ -2,11 +2,10 @@
   lib,
   fetchurl,
   wine,
-  nix-overlayfs,
+  overlayfsLib,
   cabextract,
-}:
-let
-  dllsToInstall = [
+
+  dllsToInstall ? [
     "asycfilt.dll"
     "comcat.dll"
     "mfc42.dll"
@@ -17,10 +16,12 @@ let
     "oleaut32.dll"
     "olepro32.dll"
     "stdole2.tlb"
-  ];
-  installPath = "windows/syswow64";
+  ],
+}:
+let
+  installPath = "windows/system32";
 in
-nix-overlayfs.lib.mkWinePackage {
+overlayfsLib.mkWinePackage {
   inherit wine;
   pname = "msvcp";
   version = "6.0";
@@ -34,7 +35,7 @@ nix-overlayfs.lib.mkWinePackage {
       # Extract vcredist.exe
       mkdir vcrun6
       VCRUN6DIR=$(pwd)/vcrun6
-      ${wineExe} $src "/T:Z:$VCRUN6DIR" /c /q
+      ${wineExe} "$src" "/T:Z:$VCRUN6DIR" /c /q
 
       ${lib.getExe cabextract} -q -d $VCRUN6DIR $VCRUN6DIR/vcredist.exe
 

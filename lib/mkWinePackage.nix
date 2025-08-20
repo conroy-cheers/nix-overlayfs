@@ -18,9 +18,7 @@
   moreutils,
   x11vnc,
 
-  wine-base-env,
-  autohotkey,
-  nix-overlayfs,
+  overlayfsLib,
 }:
 {
   wine,
@@ -30,6 +28,7 @@
   packageName,
   executableName ? "",
   executablePath ? "",
+  workingDirectory ? null,
   extraPreLaunchCommands ? "",
   overlayDependencies ? [ ],
   extraPathsToRemove ? [ ],
@@ -39,10 +38,11 @@
   postInstall ? "",
   launchVncServer ? false,
   unshareInstall ? null,
+  runtimeEnvVars ? { },
   ...
 }:
 let
-  scripts = nix-overlayfs.lib.scripts;
+  scripts = overlayfsLib.scripts;
   winedbg = "-all";
   pathsToRemove = builtins.concatStringsSep " " (
     builtins.map (val: "\"" + val + "\"") extraPathsToRemove
@@ -50,16 +50,13 @@ let
 
   ahkScriptPresent = ahkScript != "";
 
-  baseEnv = [
-    (wine-base-env.override { inherit wine; })
-  ];
+  baseEnv = [ wine.wine-base-env ];
   overlayDependenciesPlusUtils =
     (lib.optionals ahkScriptPresent [
-      autohotkey
+      wine.autohotkey
     ])
     ++ overlayDependencies;
-  overlayDependenciesPlusEnv =
-    baseEnv ++ (builtins.map (pkg: pkg.override { inherit wine; }) overlayDependenciesPlusUtils);
+  overlayDependenciesPlusEnv = baseEnv ++ overlayDependenciesPlusUtils;
 
   # Select the installer files based on the architecture
   deps = builtins.map (x: "\"" + x + "\"") overlayDependenciesPlusEnv;
@@ -79,7 +76,7 @@ let
             ${ahkScript}
             EOF
 
-            ${lib.getExe wine} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
+            ${lib.getExe wine} "$WINEPREFIX${wine.autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
           ''
         ])
         ++ (lib.optionals (postInstall != "") [ postInstall ])
@@ -204,6 +201,9 @@ let
           rm --force ./data/.update-timestamp
           mkdir --parents ./data/bin
 
+          # find $(pwd) \
+          #   -path $(pwd)/work -prune -o \
+          #   -type f -exec chmod --recursive a+rw {} +
           chmod --recursive a+rw ./
           rm --recursive --force "./data/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
           find ./data/ -type d -empty -delete
@@ -241,7 +241,16 @@ let
 
           # remove duplicate and non-deterministic files, clean up empty directories
           rm --force ${lib.concatMapStringsSep " " (x: "'${x}'") dupesToRemove}
-          rm --recursive --force ./windows/Installer ./users/nixbld/Desktop ./users/Public/Desktop
+          rm --recursive --force \
+            ./windows/Installer \
+            ./users/nixbld/Desktop \
+            ./users/nixbld/AppData/Roaming/Microsoft/Windows/Templates \
+            ./users/nixbld/Documents \
+            ./users/nixbld/Music \
+            ./users/nixbld/Videos \
+            ./users/nixbld/Desktop \
+            ./users/nixbld/Pictures \
+            ./users/nixbld/Downloads
           rm --force ${pathsToRemove}
           find . -type d -empty -delete
           popd || exit 1
@@ -263,6 +272,7 @@ mkOverlayfsPackage {
     basePackage
     executableName
     executablePath
+    workingDirectory
     extraPreLaunchCommands
     ;
   overlayDependencies = overlayDependenciesPlusEnv;
@@ -271,5 +281,6 @@ mkOverlayfsPackage {
   extraEnvCommands = ''
     export WINEPREFIX="$tempdir/overlay"
     export WINEDEBUG="${winedbg}"
-  '';
+  ''
+  + builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}='${v}'") runtimeEnvVars);
 }
