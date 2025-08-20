@@ -30,11 +30,13 @@
   packageName,
   executableName ? "",
   executablePath ? "",
+  extraPreLaunchCommands ? "",
   overlayDependencies ? [ ],
   extraPathsToRemove ? [ ],
   extraPathsToInclude ? [ ],
   silentFlags ? "",
   ahkScript ? "",
+  postInstall ? "",
   launchVncServer ? false,
   unshareInstall ? null,
   ...
@@ -80,6 +82,7 @@ let
             ${lib.getExe wine} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
           ''
         ])
+        ++ (lib.optionals (postInstall != "") [ postInstall ])
         ++ [
           ''
             wineserver --wait
@@ -156,6 +159,8 @@ let
 
       buildPhase =
         let
+          jqRegMerge = ".[0] * .[1]";
+          jqRemoveNulls = "del(.. | select(. == null))";
           dupesToRemove = lib.subtractLists extraPathsToInclude diffs.dupes;
         in
         ''
@@ -169,9 +174,12 @@ let
           # copy dependencies to working directory, merge all registry JSONs, mark files as writable
           for i in ''${!deps[@]}; do
             if [[ $i != 0 ]]; then
-              jq -s '.[0] * .[1]' system.json "''${deps[$i]}/basePackage/system.json" | sponge system.json || true
-              jq -s '.[0] * .[1]' user.json "''${deps[$i]}/basePackage/user.json" | sponge user.json || true
-              jq -s '.[0] * .[1]' userdef.json "''${deps[$i]}/basePackage/userdef.json" | sponge userdef.json || true
+              for file in system.json user.json userdef.json; do
+                basepath="''${deps[$i]}/basePackage/$file"
+                if [ -e "$basepath" ]; then
+                  jq -s '${jqRegMerge}' $file "$basepath" | sponge $file || true
+                fi
+              done
             fi
             cp --recursive "''${deps[$i]}"/basePackage/* ./wineprefix/
             chmod --recursive +rw ./wineprefix
@@ -184,8 +192,6 @@ let
 
           # copy converted files to prefix directory
           cp system.reg user.reg userdef.reg ./wineprefix/
-
-          # cat ./wineprefix/system.reg
 
           export WINEPREFIX=$PWD/merged
           export temp=$(mktemp -d)
@@ -202,27 +208,34 @@ let
           rm --recursive --force "./data/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
           find ./data/ -type d -empty -delete
 
-          touch ./data/system.reg ./data/user.reg
-
-          # Remove entries with non-deterministic values
-          sed -i '/^"InstallDate"=/d' ./data/system.reg
-          sed -i '/^"FirstInstallDateTime"=/d' ./data/system.reg
-          sed -i -E '/tmp.[0-9A-Za-z]{10}/d' ./data/user.reg
-
           # convert each registry file to JSON, apply supplied patch, generate diff, and convert back to .reg
-          reg2json ./data/system.reg > system.new.json
-          jd -p -f=merge -o system.new.json "${diffs.system}" system.new.json || true
-          jd -f=merge -o ./data/system.json system.json system.new.json || true
-          json2reg system.new.json ./data/system.reg
+          if [ -e ./data/system.reg ]; then
+            # Remove entries with non-deterministic values
+            sed -i '/^"InstallDate"=/d' ./data/system.reg
+            sed -i '/^"FirstInstallDateTime"=/d' ./data/system.reg
+            reg2json ./data/system.reg > system.new.json
+            jq '${jqRemoveNulls}' system.new.json | sponge system.new.json
+            jd -p -f=merge -o system.new.json "${diffs.system}" system.new.json || true
+            jd -f=merge -o ./data/system.json system.json system.new.json || true
+            json2reg system.new.json ./data/system.reg
+          fi
 
-          reg2json ./data/user.reg > user.new.json
-          jd -p -f=merge -o system.new.json "${diffs.user}" system.new.json || true
-          jd -f=merge -o ./data/user.json user.json user.new.json || true
-          json2reg user.new.json ./data/user.reg
+          if [ -e ./data/user.reg ]; then
+            # Remove entries with non-deterministic values
+            sed -i -E '/tmp.[0-9A-Za-z]{10}/d' ./data/user.reg
+            reg2json ./data/user.reg > user.new.json
+            jq '${jqRemoveNulls}' user.new.json | sponge user.new.json
+            jd -p -f=merge -o user.new.json "${diffs.user}" user.new.json || true
+            jd -f=merge -o ./data/user.json user.json user.new.json || true
+            json2reg user.new.json ./data/user.reg
+          fi
 
-          reg2json ./data/userdef.reg > userdef.new.json
-          jd -f=merge -o ./data/userdef.json userdef.json userdef.new.json || true
-          json2reg userdef.new.json ./data/userdef.reg
+          if [ -e ./data/userdef.reg ]; then
+            reg2json ./data/userdef.reg > userdef.new.json
+            jq '${jqRemoveNulls}' userdef.new.json | sponge userdef.new.json
+            jd -f=merge -o ./data/userdef.json userdef.json userdef.new.json || true
+            json2reg userdef.new.json ./data/userdef.reg
+          fi
 
           pushd ./data/drive_c || exit 1
 
@@ -246,7 +259,12 @@ let
 in
 # generate overlay package from the base package
 mkOverlayfsPackage {
-  inherit basePackage executableName executablePath;
+  inherit
+    basePackage
+    executableName
+    executablePath
+    extraPreLaunchCommands
+    ;
   overlayDependencies = overlayDependenciesPlusEnv;
   interpreter = lib.getExe wine;
   basePackageName = packageName;

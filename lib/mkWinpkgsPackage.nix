@@ -36,11 +36,11 @@ let
     builtins.fromJSON (builtins.readFile "${manifest-json}");
 
   # Select the installer files based on the architecture
-  installer = builtins.head (
+  installer = builtins.head (builtins.filter (x: (x.InstallerType or "exe") != "zip") (
     (builtins.filter (x: x.Architecture == "x64") manifest.Installers)
     ++ (builtins.filter (x: x.Architecture == "x86") manifest.Installers)
     ++ (builtins.filter (x: x.Architecture == "neutral") manifest.Installers)
-  );
+  ));
 
   # Group installer types for silent flag selection
   installerType = installer.InstallerType or manifest.InstallerType or "exe";

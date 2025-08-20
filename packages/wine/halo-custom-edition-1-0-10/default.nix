@@ -1,12 +1,17 @@
 {
   fetchurl,
   wine,
+
   nix-overlayfs,
   msvcp60,
   msxml4,
-  crypt32,
+  mingw,
   halo-custom-edition-1-00,
 }:
+let
+  chktrustSrc = ./chktrust.cpp;
+  gpp = "/drive_c/Program\ Files/CodeBlocks/MinGW/bin/g++.exe";
+in
 (nix-overlayfs.lib.mkWinePackage rec {
   inherit wine;
   pname = "halo-custom-edition";
@@ -20,27 +25,25 @@
     ''
       DESTDIR="$WINEPREFIX/drive_c/Program Files (x86)/Microsoft Games/Halo Custom Edition"
       DESTPATH="$DESTDIR/haloce-patch-1.0.10.exe"
-
-      sleep 10
-
       cp $src "$DESTPATH"
 
-      ls -lrth "$DESTDIR"
+      ${wineExe} "$WINEPREFIX${gpp}" "${chktrustSrc}" -o chktrust.exe
+      mv chktrust.exe "$DESTDIR"
 
       cd "$DESTDIR"
       ${wineExe} "$DESTPATH"
 
       wineserver --wait
+      rm "$DESTPATH"
     '';
-  # ahkScript = builtins.readFile ./install.ahk;
   overlayDependencies = [
+    mingw
     msvcp60
     msxml4
-    crypt32
     halo-custom-edition-1-00
   ];
   packageName = "halo-custom-edition";
   executableName = "haloce";
   executablePath = "/drive_c/Program Files (x86)/Microsoft Games/Halo Custom Edition/haloce.exe";
-  # launchVncServer = true;
+  launchVncServer = true;
 })

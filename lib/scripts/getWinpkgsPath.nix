@@ -3,7 +3,7 @@
   winpkgs = builtins.fetchGit {
     url = "https://github.com/microsoft/winget-pkgs";
     ref = "master";
-    rev = "8cd2ee09a77bbb9d803f21d4c41b8953f57f75e0";
+    rev = "3d7993994fab4d4f8bb43bbb4b34e0abf280655f";
   };
 in
   pkgs.writeShellScript "getWinpkgsPath.sh" ''

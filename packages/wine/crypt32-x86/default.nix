@@ -10,7 +10,7 @@ let
 in
 nix-overlayfs.lib.mkWinePackage {
   inherit wine;
-  pname = "crypt32";
+  pname = "crypt32-x86";
   version = "6.1";
   src = fetchurl {
     url = "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe";
@@ -27,12 +27,10 @@ nix-overlayfs.lib.mkWinePackage {
 
       rm -rf $WIN7SP1DIR
 
-      ls -la ./data
-
       wineserver --wait
     '';
   extraPathsToInclude = [
-    "${installPath}/x86_microsoft-windows-crypt32-dll_31bf3856ad364e35_6.1.7601.17514_none_5d772bc73c15dfe5/crypt32.dll"
+    "${installPath}/crypt32.dll"
   ];
-  packageName = "crypt32";
+  packageName = "crypt32-x86";
 }
