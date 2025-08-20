@@ -7,6 +7,9 @@
 
   wine,
   wine-mono,
+  xorg,
+  jd-diff-patch,
+
   nix-overlayfs,
 }:
 stdenv.mkDerivation {
@@ -14,7 +17,6 @@ stdenv.mkDerivation {
   version = "0.0.1";
 
   nativeBuildInputs =
-    with pkgs;
     with nix-overlayfs.lib.scripts;
     [
       wine

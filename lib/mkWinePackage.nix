@@ -1,20 +1,32 @@
 # Author: Libor Štěpánek 2025
 {
   lib,
-  mkOverlayfsPackage,
   pkgs,
+  mkOverlayfsPackage,
   diffs,
 
-  wine,
+  writeShellScript,
+  stdenv,
+
+  xorg,
+  util-linux,
+  mount,
+  bash,
+  jq,
+  jd-diff-patch,
+  gnused,
+  moreutils,
+  x11vnc,
+
   wine-base-env,
   autohotkey,
   nix-overlayfs,
 }:
 {
+  wine,
   pname,
   version,
   src,
-  winePkg ? wine,
   packageName,
   executableName ? "",
   executablePath ? "",
@@ -36,13 +48,16 @@ let
 
   ahkScriptPresent = ahkScript != "";
 
-  overlayDependenciesPlusEnv = [
-    (wine-base-env.override { wine = winePkg; })
-  ]
-  ++ (lib.optionals ahkScriptPresent [
-    autohotkey
-  ])
-  ++ overlayDependencies;
+  baseEnv = [
+    (wine-base-env.override { inherit wine; })
+  ];
+  overlayDependenciesPlusUtils =
+    (lib.optionals ahkScriptPresent [
+      autohotkey
+    ])
+    ++ overlayDependencies;
+  overlayDependenciesPlusEnv =
+    baseEnv ++ (builtins.map (pkg: pkg.override { inherit wine; }) overlayDependenciesPlusUtils);
 
   # Select the installer files based on the architecture
   deps = builtins.map (x: "\"" + x + "\"") overlayDependenciesPlusEnv;
@@ -53,7 +68,7 @@ let
       defaultUnshareInstallSteps = (
         [
           ''
-            ${lib.getExe winePkg} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
+            ${lib.getExe wine} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
           ''
         ]
         ++ (lib.optionals ahkScriptPresent [
@@ -62,7 +77,7 @@ let
             ${ahkScript}
             EOF
 
-            ${lib.getExe winePkg} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
+            ${lib.getExe wine} "$WINEPREFIX${autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
           ''
         ])
         ++ [
@@ -73,12 +88,12 @@ let
       );
 
       # Last layer of installation, run installation and wait for WINE server to terminate
-      buildPhaseUnshareScript = pkgs.writeShellScript "buildUnshare" (
+      buildPhaseUnshareScript = writeShellScript "buildUnshare" (
         (lib.concatStringsSep "\n" (
           (lib.optionals launchVncServer [
             ''
               sleep 5
-              ${lib.getExe pkgs.x11vnc} \
+              ${lib.getExe x11vnc} \
                 -viewonly \
                 -display "$DISPLAY" \
                 -shared -noxdamage -wait 5 &
@@ -89,7 +104,7 @@ let
           ++ (lib.optionals (unshareInstall == null) defaultUnshareInstallSteps)
           ++ (lib.optionals (unshareInstall != null) [
             (unshareInstall {
-              wineExe = lib.getExe winePkg;
+              wineExe = lib.getExe wine;
             })
           ])
           ++ (lib.optionals launchVncServer [
@@ -101,7 +116,7 @@ let
       );
 
       # Second build script, run inside mount namespace
-      buildPhaseEnvScript = pkgs.writeShellScript "buildEnv" ''
+      buildPhaseEnvScript = writeShellScript "buildEnv" ''
         # Create overlay to capture changed files
         mount -t overlay -o lowerdir=./wineprefix,upperdir=./data,workdir=./work overlay ./merged
 
@@ -119,14 +134,14 @@ let
         kill $XVFB_PROC_ID;
       '';
     in
-    pkgs.stdenv.mkDerivation rec {
+    stdenv.mkDerivation rec {
       inherit pname version src;
 
       # Disable default unpack phase
       unpackPhase = ''true'';
 
-      buildInputs = with pkgs; [
-        winePkg
+      buildInputs = [
+        wine
         xorg.xorgserver
         util-linux
         mount
@@ -146,7 +161,7 @@ let
         ''
           mkdir wineprefix data work merged
 
-          deps=(${pkgs.lib.strings.concatStringsSep " " deps});
+          deps=(${lib.strings.concatStringsSep " " deps});
 
           # copy registry JSONs from base env
           cp "''${deps[0]}/basePackage/system.json" "''${deps[0]}/basePackage/user.json" "''${deps[0]}/basePackage/userdef.json" ./
@@ -233,7 +248,7 @@ in
 mkOverlayfsPackage {
   inherit basePackage executableName executablePath;
   overlayDependencies = overlayDependenciesPlusEnv;
-  interpreter = lib.getExe winePkg;
+  interpreter = lib.getExe wine;
   basePackageName = packageName;
   extraEnvCommands = ''
     export WINEPREFIX="$tempdir/overlay"

@@ -1,6 +1,7 @@
 {
   lib,
-  pkgs,
+  fetchurl,
+  wine,
   nix-overlayfs,
   cabextract,
 }:
@@ -8,9 +9,10 @@ let
   installPath = "windows/system32";
 in
 nix-overlayfs.lib.mkWinePackage {
+  inherit wine;
   pname = "crypt32";
   version = "6.1";
-  src = pkgs.fetchurl {
+  src = fetchurl {
     url = "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe";
     hash = "sha256-5USYOZVaIvxN1ZYpGv8UM7mY+Xl+HHhCMiJquh+KvZc=";
   };

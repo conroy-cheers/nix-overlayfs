@@ -1,13 +1,17 @@
 # Author: Libor Štěpánek 2025
 {
   lib,
+  runCommand,
+  fetchurl,
   mkWinePackage,
-  pkgs,
   diffs,
+
+  yj,
 
   nix-overlayfs,
 }:
 {
+  wine,
   packageName,
   executableName ? "",
   executablePath ? "",
@@ -24,7 +28,7 @@ let
   manifest =
     let
       manifest-json = (
-        pkgs.runCommand "winpkgsPath" { nativeBuildInputs = [ pkgs.yj ]; } ''
+        runCommand "winpkgsPath" { nativeBuildInputs = [ yj ]; } ''
           ${scripts.getWinpkgsPath} '${packageName}' '${version}' > $out
         ''
       );
@@ -51,12 +55,14 @@ let
   silentFlag = if silentFlags != null then silentFlags else silentFlagsIndex.${installerType};
 in
 mkWinePackage {
+  inherit wine;
+
   # Extract metadata from manifest
   pname = manifest.PackageIdentifier;
   version = manifest.PackageVersion;
 
   # Download selected installer
-  src = pkgs.fetchurl {
+  src = fetchurl {
     url = installer.InstallerUrl;
     sha256 = "${installer.InstallerSha256}";
   };
