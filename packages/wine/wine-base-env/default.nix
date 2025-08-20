@@ -16,15 +16,13 @@ stdenv.mkDerivation {
   pname = "wine-base-env";
   version = "0.0.1";
 
-  nativeBuildInputs =
-    with nix-overlayfs.lib.scripts;
-    [
-      wine
-      xorg.xorgserver
-      reg2json
-      json2reg
-      jd-diff-patch
-    ];
+  nativeBuildInputs = with nix-overlayfs.lib.scripts; [
+    wine
+    xorg.xorgserver
+    reg2json
+    json2reg
+    jd-diff-patch
+  ];
 
   src = wine-mono;
 

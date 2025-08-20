@@ -12,7 +12,7 @@ let
   chktrustSrc = ./chktrust.cpp;
   gpp = "/drive_c/Program\ Files/CodeBlocks/MinGW/bin/g++.exe";
 in
-(nix-overlayfs.lib.mkWinePackage rec {
+(nix-overlayfs.lib.mkWinePackage {
   inherit wine;
   pname = "halo-custom-edition";
   version = "1.0.10";

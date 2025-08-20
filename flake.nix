@@ -7,7 +7,7 @@
       url = "github:nixos/nixpkgs?ref=nixos-unstable";
     };
     nix-gaming = {
-      url = "github:fufexan/nix-gaming";
+      url = "github:fufexan/nix-gaming?ref=5e0ed9963e1af923b0978bdbbd81a27b847c6c4d";
       # inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -95,7 +95,9 @@
         )
       );
     in
-    transposeAttrs (generateSystems inputs);
+    (transposeAttrs (generateSystems inputs)) // {
+      inherit inputs;
+    };
 
   # {
   #   inherit (self) inputs;
