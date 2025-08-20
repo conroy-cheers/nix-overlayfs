@@ -4,6 +4,7 @@ writeShellScriptBin "reg2json" ''
   shopt -s patsub_replacement
 
   INSIDE_ENTRY=0
+  IS_EMPTY=1
   PARTIAL_ENTRY=0
   HAS_VERSION=0
   HAS_ARCH=0
@@ -21,6 +22,7 @@ writeShellScriptBin "reg2json" ''
   printf "{"
 
   while read -r LINE; do
+      IS_EMPTY=0
       if [[ "$LINE" == "#"* ]] && [[ "$LINE" != "#arch"* ]]; then
           continue
       fi
@@ -117,5 +119,9 @@ writeShellScriptBin "reg2json" ''
   fi
 
   # close the JSON object
-  printf "}}"
+  if [[ $IS_EMPTY == 0 ]]; then
+      printf "}}"
+  else
+      printf "}"
+  fi
 ''
