@@ -4,5 +4,5 @@
   nix-overlayfs,
 }:
 {
-  winePackages = import ./wine { inherit pkgs nix-gaming nix-overlayfs; };
+  winePackages = pkgs.callPackage ./wine-packages.nix { inherit nix-gaming nix-overlayfs; };
 }

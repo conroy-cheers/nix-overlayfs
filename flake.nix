@@ -53,11 +53,11 @@
               inherit nix-overlayfs;
             };
 
-            packages =
+            winePackages =
               (import ./packages {
                 inherit (p) pkgs nix-gaming;
                 inherit nix-overlayfs;
-              }).winePackages;
+              }).winePackages.packages.wine-ge-win32;
 
             # Generate the app entries based on the presence of the 'executableName' meta-attribute in the derivations
             apps =
@@ -79,7 +79,7 @@
               inherit (p) pkgs;
             };
 
-            nix-overlayfs = packages // {
+            nix-overlayfs = winePackages // {
               inherit lib;
             };
           in
@@ -90,12 +90,13 @@
               checks
               ;
 
-            packages = with nixpkgs.lib; (filterAttrs (n: pkg: isDerivation pkg) packages);
+            packages = with nixpkgs.lib; (filterAttrs (n: pkg: isDerivation pkg) winePackages);
           }
         )
       );
     in
-    (transposeAttrs (generateSystems inputs)) // {
+    (transposeAttrs (generateSystems inputs))
+    // {
       inherit inputs;
     };
 
