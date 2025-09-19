@@ -18,7 +18,7 @@ let
     "olepro32.dll"
     "stdole2.tlb"
   ];
-  installPath = "windows/syswow64";
+  installPath = "windows/system32";
 in
 nix-overlayfs.lib.mkWinePackage {
   inherit wine;
