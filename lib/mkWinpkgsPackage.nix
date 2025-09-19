@@ -19,6 +19,7 @@
   overlayDependencies ? [ ],
   extraPathsToRemove ? [ ],
   silentFlags ? null,
+  launchVncServer ? false,
   ...
 }:
 let
@@ -75,5 +76,6 @@ mkWinePackage {
     executablePath
     overlayDependencies
     extraPathsToRemove
+    launchVncServer
     ;
 }

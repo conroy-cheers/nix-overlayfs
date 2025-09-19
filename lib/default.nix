@@ -7,7 +7,7 @@
 let
   newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
   defaults = {
-    inherit (nix-gaming) wine-mono wine-tkg wine-ge;
+    inherit (nix-gaming) wine-tkg wine-ge;
     wine = nix-gaming.wine-tkg;
     inherit (nix-overlayfs) wine-base-env autohotkey;
     inherit nix-overlayfs;

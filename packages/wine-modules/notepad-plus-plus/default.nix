@@ -8,4 +8,5 @@ nix-overlayfs.lib.mkWinpkgsPackage {
   packageName = "Notepad++/Notepad++";
   executableName = "notepad++";
   executablePath = "/drive_c/Program Files/Notepad++/notepad++.exe";
+  launchVncServer = true;
 }

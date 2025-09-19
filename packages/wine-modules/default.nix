@@ -2,10 +2,10 @@
   lib,
   __splicedPackages,
   wine,
-  wine-mono,
   wineArch ? "wow64",
   runCommand,
   makeWrapper,
+  symlinkJoin,
   nix-overlayfs,
 }:
 
@@ -18,23 +18,37 @@ let
     lib.callPackageWith scope drv args;
   mkScope = scope: pkgs // scope;
 
-  # newScope = extra: pkgs.lib.callPackageWith (pkgs // defaults // extra);
-  # defaults = {
-  #   inherit (nix-gaming) wine-mono wine-tkg wine-ge;
-  #   wine = nix-gaming.wine-tkg;
-  #   inherit nix-overlayfs;
-  # };
+  wineExeName =
+    {
+      "win32" = "wine";
+      "win64" = "wine64";
+      "wow64" = "wine64";
+    }
+    .${wineArch};
 
   wineWrapped =
     runCommand "${wine}-${wineArch}"
       {
         nativeBuildInputs = [ makeWrapper ];
-        meta.mainProgram = "wine";
+
+        meta.mainProgram = "wine-wrapped";
       }
       ''
-        makeWrapper ${lib.getExe wine} $out/bin/wine \
+        makeWrapper ${lib.getExe' wine wineExeName} $out/bin/wine-wrapped \
           --set WINEARCH "${wineArch}"
       '';
+  wineCombo = symlinkJoin {
+    pname = "${wine.pname}-${wineArch}-wrapped";
+    inherit (wine) version;
+
+    paths = [
+      wine
+      wineWrapped
+    ];
+    meta = wine.meta // {
+      mainProgram = "wine-wrapped";
+    };
+  };
 
   packages =
     self:
@@ -44,8 +58,7 @@ let
     in
     rec {
       inherit nix-overlayfs callPackage;
-      inherit wine-mono;
-      wine = wineWrapped;
+      wine = wineCombo;
 
       wine-base-env = callPackage ./wine-base-env { };
       autohotkey = callPackage ./autohotkey { };
