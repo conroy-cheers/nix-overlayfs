@@ -1,0 +1,8 @@
+WINE REGISTRY Version 2
+;; All keys relative to \\User\\S-1-5-21-0-0-0-1000
+
+#arch=win64
+
+[Control Panel\\International] 1742678266
+#time=1db9b6fdbaf7b0c
+"sCountry"="United States"

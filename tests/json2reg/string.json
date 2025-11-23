@@ -1,0 +1,10 @@
+{
+    "arch": "win64",
+    "keys": {
+        "Control Panel\\\\International": {
+            "\"sCountry\"": "\"United States\""
+        }
+    },
+    "location": "\\\\User\\\\S-1-5-21-0-0-0-1000",
+    "version": "2"
+}

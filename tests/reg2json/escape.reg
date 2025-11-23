@@ -1,0 +1,8 @@
+WINE REGISTRY Version 2
+;; All keys relative to \\User\\S-1-5-21-0-0-0-1000
+
+#arch=win64
+
+[Software\\Classes\\CLSID\\{083863F1-70DE-11D0-BD40-00A0C911CE86}\\Instance\\{1B544C20-FD0B-11CE-8C63-00AA0044B51E}] 1742678270
+#time=1db9b6fde078a52
+"FilterData"="!@#$%^&*()[]{}':;\|=-_><?/

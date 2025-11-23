@@ -1,0 +1,36 @@
+{
+    "keys": {
+        "Software\\\\Microsoft\\\\Cryptography": null,
+        "Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion": {
+            "\"InstallDate\"": null
+        },
+        "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion": {
+            "\"FirstInstallDateTime\"": null
+        },
+        "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Installer\\\\UserData\\\\S-1-5-18\\\\Products\\\\5D09B36F372BF285D81FA131156FEAEB\\\\InstallProperties": {
+            "\"InstallDate\"": null,
+            "\"LocalPackage\"": null
+        },
+        "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Installer\\\\UserData\\\\S-1-5-18\\\\Products\\\\96A6F62D672DEA4539827B154FE88EE5\\\\InstallProperties": {
+            "\"InstallDate\"": null,
+            "\"LocalPackage\"": null
+        },
+        "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\{D26F6A69-D276-54AE-9328-B751F48EE85E}": {
+            "\"InstallDate\"": null
+        },
+        "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\{F63B90D5-B273-582F-8DF1-1A1351F6AEBE}": {
+            "\"InstallDate\"": null
+        },
+        "Software\\\\Wow6432Node\\\\Microsoft\\\\Windows NT\\\\CurrentVersion": {
+            "\"InstallDate\"": null
+        },
+        "Software\\\\Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion": {
+            "\"FirstInstallDateTime\"": null
+        },
+        "System\\\\CurrentControlSet\\\\Control\\\\Class\\\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\\\0000": {
+            "\"DriverDate\"": null,
+            "\"DriverDateData\"": null
+        },
+        "System\\\\CurrentControlSet\\\\Enum\\\\PCI\\\\VEN_0000\u0026DEV_0000\u0026SUBSYS_00000000\u0026REV_00\\\\00000000\\\\Device Parameters": null
+    }
+}
