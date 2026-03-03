@@ -27,12 +27,17 @@ let
       autohotkey = callPackage ./autohotkey { };
       crypt32 = callPackage ./crypt32 { };
       dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
+      fonts = callPackage ./fonts { };
       wine-dxvk = callPackage ./wine-dxvk { };
       mfc42 = callPackage ./mfc42 { };
       mingw = callPackage ./mingw { };
       msvcp60 = callPackage ./msvcp60 { };
       msxml4 = callPackage ./msxml4 { };
+      msxml6 = callPackage ./msxml6 { };
+      vcrun2022 = callPackage ./vcrun2022 { };
       vlc = callPackage ./vlc { };
+      webview2 = callPackage ./webview2 { };
+      win11 = callPackage ./win11 { };
     };
 in
 makeExtensible packages
