@@ -131,9 +131,12 @@ let
 
         # run install script
         unshare --map-user="$originalUser" "${buildPhaseUnshareScript}"
+        INSTALL_STATUS=$?
 
         # terminate framebuffer
         kill $XVFB_PROC_ID;
+
+        exit $INSTALL_STATUS
       '';
     in
     stdenv.mkDerivation rec {

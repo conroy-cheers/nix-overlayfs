@@ -39,7 +39,7 @@ mkOverlayfsPackage {
   basePackageName = packageName;
   extraEnvCommands = ''
     export WINEPREFIX="$tempdir/overlay"
-    export WINEDEBUG="${winedbg}"
+    export WINEDEBUG="''${WINEDEBUG:-${winedbg}}"
   ''
   + builtins.concatStringsSep "\n" (
     lib.mapAttrsToList (n: v: "export ${n}='${v}'") allRuntimeEnvVars

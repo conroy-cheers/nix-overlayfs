@@ -19,7 +19,11 @@
   ],
 }:
 let
-  installPath = "windows/system32";
+  installPath =
+    if wine.wineArch == "wow64" then
+      "windows/syswow64"
+    else
+      "windows/system32";
 in
 overlayfsLib.mkWinePackage {
   inherit wine;

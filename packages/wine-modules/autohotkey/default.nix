@@ -9,5 +9,5 @@ overlayfsLib.mkWinpkgsPackage {
   packageName = "AutoHotkey/AutoHotkey";
   version = "1.1.36.01";
   executableName = "autohotkey";
-  executablePath = "${wine.programFiles32Path}/AutoHotkey/AutoHotkey.exe";
+  executablePath = "${wine.programFilesPath}/AutoHotkey/AutoHotkey.exe";
 }

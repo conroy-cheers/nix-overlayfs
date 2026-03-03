@@ -25,8 +25,7 @@ let
 
       wine-base-env = callPackage ./wine-base-env { };
       autohotkey = callPackage ./autohotkey { };
-      crypt32-x86 = callPackage ./crypt32-x86 { };
-      crypt32-x64 = callPackage ./crypt32-x64 { };
+      crypt32 = callPackage ./crypt32 { };
       dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
       wine-dxvk = callPackage ./wine-dxvk { };
       mfc42 = callPackage ./mfc42 { };
