@@ -14,6 +14,10 @@
 }:
 let
   wineMonoDownloads = {
+    "11.0.0" = {
+      url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.0.0/wine-mono-11.0.0-x86.msi";
+      hash = "sha256-1+/t4Lm9z1ITT4zWztWdn+zpdvcLEaQAvbR7hkVpzSc=";
+    };
     "10.3.0" = {
       url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-10.3.0/wine-mono-10.3.0-x86.msi";
       hash = "sha256-zs5cYxgAlN/98B0PvjYqS2BuUoC5jN/RuFaM35tXL5g=";
@@ -56,8 +60,11 @@ let
     };
   };
 
+  # https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono
   wineMonoVersion =
     {
+      "11.3" = "11.0.0";
+      "11.1" = "11.0.0";
       "10.19" = "10.3.0";
       "10.18" = "10.3.0";
       "10.17" = "10.3.0";
@@ -81,6 +88,8 @@ let
 
   needFramebuffer =
     {
+      "11.3" = false;
+      "11.1" = false;
       "10.19" = false;
       "10.18" = false;
       "10.15" = false;
