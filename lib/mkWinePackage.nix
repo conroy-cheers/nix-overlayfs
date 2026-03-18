@@ -40,7 +40,7 @@
   launchVncServer ? false,
   unshareInstall ? null,
   runtimeEnvVars ? { },
-  entrypointWrapper ? (entrypoint: entrypoint),
+  entrypointWrapper ? (entrypoint: ''exec ${entrypoint} "$@"''),
   ...
 }:
 let

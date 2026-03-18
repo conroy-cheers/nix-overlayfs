@@ -15,6 +15,7 @@
   workingDirectory ? null,
   extraPreLaunchCommands ? "",
   runtimeEnvVars ? { },
+  entrypointWrapper ? (entrypoint: ''exec ${entrypoint} "$@"''),
   ...
 }:
 
@@ -33,6 +34,7 @@ mkOverlayfsPackage {
     executablePath
     workingDirectory
     extraPreLaunchCommands
+    entrypointWrapper
     ;
   overlayDependencies = baseEnv ++ baseLayer.overlayDependencies ++ overlayDependencies;
   interpreter = lib.getExe wine;

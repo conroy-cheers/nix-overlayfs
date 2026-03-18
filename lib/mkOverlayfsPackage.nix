@@ -14,7 +14,7 @@
   extraPreLaunchCommands ? "",
   interpreter ? "",
   basePackageName ? basePackage.pname,
-  entrypointWrapper ? (entrypoint: entrypoint),
+  entrypointWrapper ? (entrypoint: ''exec ${entrypoint} "$@"''),
   passthru ? { },
 }:
 stdenv.mkDerivation {
