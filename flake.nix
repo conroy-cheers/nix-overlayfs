@@ -25,69 +25,55 @@
   };
 
   outputs =
-    {
+    inputs@{
+      self,
       nixpkgs,
       ...
-    }@inputs:
+    }:
     let
-      transposeAttrs =
-        attrs:
-        nixpkgs.lib.foldlAttrs (
-          acc: outer: inner:
-          nixpkgs.lib.recursiveUpdate acc (nixpkgs.lib.mapAttrs (k: v: { ${outer} = v; }) inner)
-        ) { } attrs;
-
-      generateSystems = (
-        {
-          self,
-          nixpkgs,
-          nix-gaming,
-          nix-gaming-legacy,
-        }@inputs:
-        nixpkgs.lib.genAttrs [ "x86_64-linux" ] (
-          system:
-          let
-            p = {
-              inherit self;
-              pkgs = nixpkgs.legacyPackages.${system};
-              nix-gaming = nix-gaming.packages.${system};
-              nix-gaming-legacy = nix-gaming-legacy.packages.${system};
-            };
-
-            lib = import ./lib {
-              inherit (p) pkgs;
-              inherit overlayfsLib;
-            };
-
-            packages = (
-              import ./packages {
-                inherit (p) pkgs nix-gaming nix-gaming-legacy;
-                inherit overlayfsLib;
-              }
-            );
-
-            appsListing = import ./apps {
-              inherit overlayfsLib;
-              inherit (packages) wineWow64Modules;
-              inherit (p) pkgs;
-            };
-
-            checks = import ./tests {
-              inherit overlayfsLib;
-              inherit (p) pkgs;
-            };
-
-            overlayfsLib = lib;
-          in
-          {
-            inherit lib checks packages;
-            inherit (appsListing) apps;
-          }
-        )
-      );
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      mkPkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ self.overlays.default ];
+        };
+      pkgsFor = forAllSystems mkPkgsFor;
+      packageSets = forAllSystems (system: pkgsFor.${system}.nix-overlayfs);
     in
-    (transposeAttrs (generateSystems inputs))
-    // {
+    {
+      overlays.default = final: prev: {
+        nix-overlayfs = import ./pkgs/top-level {
+          pkgs = final;
+          inherit inputs;
+        };
+      };
+
+      legacyPackages = forAllSystems (
+        system:
+        let
+          lib = pkgsFor.${system}.lib;
+        in
+        {
+          nix-overlayfs = lib.dontRecurseIntoAttrs packageSets.${system};
+        }
+      );
+
+      packages = forAllSystems (system: packageSets.${system}.packages);
+
+      apps = forAllSystems (system: packageSets.${system}.apps);
+
+      lib = forAllSystems (system: packageSets.${system}.lib);
+
+      checks = forAllSystems (
+        system:
+        import ./tests {
+          pkgs = pkgsFor.${system};
+          overlayfsLib = packageSets.${system}.lib;
+        }
+      );
+
       inherit inputs;
     };
 }

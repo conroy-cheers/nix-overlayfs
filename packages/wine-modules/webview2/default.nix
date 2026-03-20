@@ -1,8 +1,8 @@
 {
-  wine,
+  runtime,
   overlayfsLib,
 }:
 overlayfsLib.mkWinpkgsPackage {
-  inherit wine;
+  inherit runtime;
   packageName = "Microsoft/EdgeWebView2Runtime";
 }

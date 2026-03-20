@@ -1,7 +1,7 @@
 {
   lib,
   fetchurl,
-  wine,
+  runtime,
   overlayfsLib,
   cabextract,
 }:
@@ -9,10 +9,10 @@ let
   x86CabPath = "x86_microsoft-windows-crypt32-dll_31bf3856ad364e35_6.1.7601.17514_none_5d772bc73c15dfe5/crypt32.dll";
   x64CabPath = "amd64_microsoft-windows-crypt32-dll_31bf3856ad364e35_6.1.7601.17514_none_b995c74af473511b/crypt32.dll";
 
-  installX86 = wine.wineArch != "win64";
-  installX64 = wine.wineArch != "win32";
+  installX86 = runtime.windowsArch != "win64";
+  installX64 = runtime.windowsArch != "win32";
 
-  installPath32 = if wine.wineArch == "win32" then "windows/system32" else "windows/syswow64";
+  installPath32 = if runtime.windowsArch == "win32" then "windows/system32" else "windows/syswow64";
   installPath64 = "windows/system32";
 
   x86Src = fetchurl {
@@ -25,13 +25,13 @@ let
     hash = "sha256-9NHUGNkbFhloikgmgO4DL/0rZeQgxtLq7PiqN2KqZMg=";
   };
 in
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "crypt32";
   version = "6.1";
   src = if installX64 then x64Src else x86Src;
   unshareInstall =
-    { wineExe }:
+    { session, ... }:
     ''
       WIN7SP1DIR=$(pwd)/win7sp1
       mkdir -p "$WIN7SP1DIR"
@@ -48,7 +48,7 @@ overlayfsLib.mkWinePackage {
 
       rm -rf "$WIN7SP1DIR"
 
-      wineserver --wait
+      ${session.commands.wineserver} --wait
     '';
   extraPathsToInclude =
     lib.optionals installX86 [ "${installPath32}/crypt32.dll" ]

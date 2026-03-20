@@ -1,0 +1,26 @@
+diff --git a/dlls/ntdll/signal_arm64ec.c b/dlls/ntdll/signal_arm64ec.c
+index a93aae895540..0189a4f2d6d3 100644
+--- a/dlls/ntdll/signal_arm64ec.c
++++ b/dlls/ntdll/signal_arm64ec.c
+@@ -101,11 +101,19 @@ static NTSTATUS create_cross_process_work_list( CHPEV2_PROCESS_INFO *info )
+ 
+     size.QuadPart = map_size;
+     status = NtCreateSection( &section, SECTION_ALL_ACCESS, NULL, &size, PAGE_READWRITE, SEC_COMMIT, 0 );
+     if (status) return status;
+-    status = NtMapViewOfSection( section, GetCurrentProcess(), (void **)&list, 0, 0, NULL,
+-                                 &map_size, ViewShare, MEM_TOP_DOWN, PAGE_READWRITE );
++    status = NtMapViewOfSection( section, GetCurrentProcess(), (void **)&list, 0, 0, NULL,
++                                 &map_size, ViewShare, MEM_TOP_DOWN, PAGE_READWRITE );
++    if (status)
++    {
++        map_size = 0x4000;
++        list = NULL;
++        WARN( "top-down work-list map failed %#lx, retrying without MEM_TOP_DOWN\n", status );
++        status = NtMapViewOfSection( section, GetCurrentProcess(), (void **)&list, 0, 0, NULL,
++                                     &map_size, ViewShare, 0, PAGE_READWRITE );
++    }
+     if (status)
+     {
+         NtClose( section );
+         return status;
+     }

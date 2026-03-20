@@ -1,9 +1,9 @@
 {
-  wine,
+  runtime,
   overlayfsLib,
 }:
 overlayfsLib.mkWinpkgsPackage {
-  inherit wine;
+  inherit runtime;
   packageName = "CodeBlocks/CodeBlocks/MinGW";
   version = "25.03";
 }

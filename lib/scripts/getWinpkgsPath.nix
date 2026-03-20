@@ -16,6 +16,7 @@ pkgs.writeShellScript "getWinpkgsPath.sh" ''
   fi
 
   appname="$1"
+  manifestId="''${appname//\//.}"
 
   # get the name of the first directory (first letter of the author, lowercased)
   bucket="''${appname:0:1}"
@@ -30,7 +31,14 @@ pkgs.writeShellScript "getWinpkgsPath.sh" ''
 
   # get the version directory, find latest if unspecified
   if [ $# -lt 2 ] || [ "$2" == latest ]; then
-      latest=$(find "$pkgPath" -type d | sort --version-sort --reverse | head --lines 1)
+      latest=$(
+          find "$pkgPath" -type f -name "$manifestId.installer.yaml" -printf '%h\n' \
+            | sort --version-sort --reverse \
+            | head --lines 1
+      )
+      if [ -z "$latest" ]; then
+          exit 1
+      fi
       pkgPath="$latest"
   elif [ -d "$pkgPath/$2" ]; then
       pkgPath="$pkgPath/$2"
@@ -39,7 +47,7 @@ pkgs.writeShellScript "getWinpkgsPath.sh" ''
   fi
 
   # find manifest file
-  manifest=$(find "$pkgPath" -type f -name "*installer.yaml")
+  manifest="$pkgPath/$manifestId.installer.yaml"
 
   if [ ! -f "$manifest" ]; then
       exit 1

@@ -1,15 +1,14 @@
 # Maintainer: Conroy Cheers <conroy@corncheese.org>
-# Based on original work by Libor Štěpánek 2025
+# Based on original work by Libor Stepanek 2025
 {
   lib,
-  pkgs,
   mkOverlayfsPackage,
   diffs,
 
   writeShellScript,
   stdenv,
 
-  xorg,
+  xorg-server,
   util-linux,
   mount,
   bash,
@@ -22,7 +21,7 @@
   overlayfsLib,
 }:
 {
-  wine,
+  runtime,
   pname,
   version,
   src,
@@ -49,27 +48,40 @@ let
   pathsToRemove = builtins.concatStringsSep " " (
     builtins.map (val: "\"" + val + "\"") extraPathsToRemove
   );
+  renderEnvExports =
+    env: builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}=${v}") env);
 
   ahkScriptPresent = ahkScript != "";
 
-  baseEnv = [ wine.wine-base-env ];
+  baseEnv = [ runtime.baseEnvLayer ];
   overlayDependenciesPlusUtils =
     (lib.optionals ahkScriptPresent [
-      wine.autohotkey
+      runtime.autohotkeyLayer
     ])
     ++ overlayDependencies;
   overlayDependenciesPlusEnv = baseEnv ++ overlayDependenciesPlusUtils;
+  launchSession = runtime.mkSession {
+    phase = "launch";
+    sessionRoot = "$tempdir/runtime-session";
+    overlayRoot = "$tempdir/overlay";
+    homeDir = "$HOME";
+  };
 
-  # Select the installer files based on the architecture
   deps = builtins.map (x: "\"" + x + "\"") overlayDependenciesPlusEnv;
 
-  # Create the base package for mkOverlayfsPackage
+  buildSession = runtime.mkSession {
+    phase = "build";
+    sessionRoot = "$PWD/runtime-session";
+    overlayRoot = "$PWD/merged";
+    homeDir = "$temp";
+  };
+
   basePackage =
     let
       defaultUnshareInstallSteps = (
         [
           ''
-            ${lib.getExe wine} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
+            ${buildSession.commands.wine} '${src}' ${silentFlags} ${if ahkScriptPresent then "&" else ""}
           ''
         ]
         ++ (lib.optionals ahkScriptPresent [
@@ -78,21 +90,34 @@ let
             ${ahkScript}
             EOF
 
-            ${lib.getExe wine} "$WINEPREFIX${wine.autohotkey.executablePath}" "Z:$(pwd)/unattended-install.ahk"
+            ${buildSession.commands.wine} "$WINEPREFIX${runtime.autohotkeyLayer.executablePath}" "Z:$(pwd)/unattended-install.ahk"
           ''
         ])
         ++ (lib.optionals (postInstall != "") [ postInstall ])
         ++ [
           ''
-            wineserver --wait
+            ${buildSession.commands.wineserver} --wait
           ''
         ]
       );
 
-      # Last layer of installation, run installation and wait for WINE server to terminate
       buildPhaseUnshareScript = writeShellScript "buildUnshare" (
         (lib.concatStringsSep "\n" (
-          (lib.optionals launchVncServer [
+          [
+            ''
+              cleanup_runtime_session() {
+                local status=$?
+                ${buildSession.postCommands}
+                exit $status
+              }
+
+              trap cleanup_runtime_session EXIT
+
+              ${renderEnvExports buildSession.env}
+              ${buildSession.preCommands}
+            ''
+          ]
+          ++ (lib.optionals launchVncServer [
             ''
               sleep 5
               ${lib.getExe x11vnc} \
@@ -106,7 +131,8 @@ let
           ++ (lib.optionals (unshareInstall == null) defaultUnshareInstallSteps)
           ++ (lib.optionals (unshareInstall != null) [
             (unshareInstall {
-              wineExe = lib.getExe wine;
+              inherit runtime;
+              session = buildSession;
             })
           ])
           ++ (lib.optionals launchVncServer [
@@ -117,23 +143,18 @@ let
         ))
       );
 
-      # Second build script, run inside mount namespace
       buildPhaseEnvScript = writeShellScript "buildEnv" ''
-        # Create overlay to capture changed files
         mount -t overlay -o lowerdir=./wineprefix,upperdir=./data,workdir=./work overlay ./merged
 
         export USER="$originalUser"
 
-        # Create virtual framebuffer for WINE
         Xvfb :999 -screen 0 1600x900x16 &
         XVFB_PROC_ID=$!
         export DISPLAY=:999
 
-        # run install script
         unshare --map-user="$originalUser" "${buildPhaseUnshareScript}"
         INSTALL_STATUS=$?
 
-        # terminate framebuffer
         kill $XVFB_PROC_ID;
 
         exit $INSTALL_STATUS
@@ -142,12 +163,10 @@ let
     stdenv.mkDerivation rec {
       inherit pname version src;
 
-      # Disable default unpack phase
-      unpackPhase = ''true'';
+      unpackPhase = "true";
 
       buildInputs = [
-        wine
-        xorg.xorgserver
+        xorg-server
         util-linux
         mount
         bash
@@ -157,7 +176,8 @@ let
         scripts.reg2json
         gnused
         moreutils
-      ];
+      ]
+      ++ buildSession.buildInputs;
 
       buildPhase =
         let
@@ -170,10 +190,8 @@ let
 
           deps=(${lib.strings.concatStringsSep " " deps});
 
-          # copy registry JSONs from base env
           cp "''${deps[0]}/basePackage/system.json" "''${deps[0]}/basePackage/user.json" "''${deps[0]}/basePackage/userdef.json" ./
 
-          # copy dependencies to working directory, merge all registry JSONs, mark files as writable
           for i in ''${!deps[@]}; do
             if [[ $i != 0 ]]; then
               for file in system.json user.json userdef.json; do
@@ -187,35 +205,25 @@ let
             chmod --recursive +rw ./wineprefix
           done
 
-          # convert merged JSONs to registry files
           json2reg system.json system.reg
           json2reg user.json user.reg
           json2reg userdef.json userdef.reg
 
-          # copy converted files to prefix directory
           cp system.reg user.reg userdef.reg ./wineprefix/
 
-          export WINEPREFIX=$PWD/merged
           export temp=$(mktemp -d)
-          export HOME="$temp"
           export originalUser=$(id --user --name)
 
-          # run
           unshare --fork --map-root-user --mount bash -c -- '${buildPhaseEnvScript}'
 
           rm --force ./data/.update-timestamp
           mkdir --parents ./data/bin
 
-          # find $(pwd) \
-          #   -path $(pwd)/work -prune -o \
-          #   -type f -exec chmod --recursive a+rw {} +
           chmod --recursive a+rw ./
           rm --recursive --force "./data/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
           find ./data/ -type d -empty -delete
 
-          # convert each registry file to JSON, apply supplied patch, generate diff, and convert back to .reg
           if [ -e ./data/system.reg ]; then
-            # Remove entries with non-deterministic values
             sed -i '/^"InstallDate"=/d' ./data/system.reg
             sed -i '/^"FirstInstallDateTime"=/d' ./data/system.reg
             reg2json ./data/system.reg > system.new.json
@@ -226,7 +234,6 @@ let
           fi
 
           if [ -e ./data/user.reg ]; then
-            # Remove entries with non-deterministic values
             sed -i -E '/tmp.[0-9A-Za-z]{10}/d' ./data/user.reg
             reg2json ./data/user.reg > user.new.json
             jq '${jqRemoveNulls}' user.new.json | sponge user.new.json
@@ -244,7 +251,6 @@ let
 
           pushd ./data/drive_c || exit 1
 
-          # remove duplicate and non-deterministic files, clean up empty directories
           rm --force ${lib.concatMapStringsSep " " (x: "'${x}'") dupesToRemove}
           rm --recursive --force \
             ./windows/Installer \
@@ -267,11 +273,10 @@ let
       '';
 
       passthru = {
-        inherit buildPhaseUnshareScript buildPhaseEnvScript;
+        inherit buildPhaseUnshareScript buildPhaseEnvScript runtime;
       };
     };
 in
-# generate overlay package from the base package
 mkOverlayfsPackage {
   inherit
     basePackage
@@ -282,12 +287,14 @@ mkOverlayfsPackage {
     entrypointWrapper
     ;
   overlayDependencies = overlayDependenciesPlusEnv;
-  interpreter = lib.getExe wine;
+  session = launchSession;
+  launchProgram = launchSession.commands.wine;
   basePackageName = packageName;
   extraEnvCommands = ''
-    export WINEPREFIX="$tempdir/overlay"
     export WINEDEBUG="${winedbg}"
   ''
   + builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}='${v}'") runtimeEnvVars);
-  passthru = { inherit runtimeEnvVars; };
+  passthru = {
+    inherit runtime runtimeEnvVars;
+  };
 }

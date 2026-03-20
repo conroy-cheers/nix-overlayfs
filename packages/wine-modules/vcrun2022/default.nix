@@ -1,6 +1,6 @@
 {
   fetchurl,
-  wine,
+  runtime,
   overlayfsLib,
 }:
 let
@@ -13,26 +13,26 @@ let
     hash = "sha256-iZVUjf/83nxJmHApx2Q1VhK6aFDuCae28P3chb3FwoA=";
   };
 in
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "vcrun";
   version = "2022";
   src = srcX86;
   packageName = "vcrun2022";
   unshareInstall =
-    { wineExe }:
+    { session, ... }:
     ''
       install_redist() {
         local status=0
 
-        "${wineExe}" "$1" /quiet /norestart || status=$?
+        "${session.commands.wine}" "$1" /quiet /norestart || status=$?
         if [ "$status" -ne 0 ] && [ "$status" -ne 194 ]; then
           exit "$status"
         fi
       }
 
       install_redist "${srcX86}"
-      ${if wine.wineArch != "win32" then ''install_redist "${srcX64}"'' else ""}
-      wineserver --wait
+      ${if runtime.windowsArch != "win32" then ''install_redist "${srcX64}"'' else ""}
+      ${session.commands.wineserver} --wait
     '';
 }

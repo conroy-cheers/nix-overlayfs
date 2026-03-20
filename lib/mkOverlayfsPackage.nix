@@ -12,7 +12,8 @@
   overlayDependencies ? [ ],
   extraEnvCommands ? "",
   extraPreLaunchCommands ? "",
-  interpreter ? "",
+  launchProgram ? "",
+  session ? null,
   basePackageName ? basePackage.pname,
   entrypointWrapper ? (entrypoint: ''exec ${entrypoint} "$@"''),
   passthru ? { },
@@ -37,18 +38,37 @@ stdenv.mkDerivation {
             XDG_DATA_HOME="$HOME/.local/share"
         fi
 
+        if [ -z ''${XDG_CACHE_HOME+x} ]; then
+            XDG_CACHE_HOME="$HOME/.cache"
+        fi
+
         export appdir="$XDG_DATA_HOME/${basePackageName}"
         export originalUser="$USER"
-        export tempdir=$(mktemp -d)
+        export tmpbase="$XDG_CACHE_HOME/nix-overlayfs/tmp"
+
+        mkdir --parents "$appdir" "$tmpbase" || exit 1
+        chmod 700 "$tmpbase" || exit 1
+
+        export tempdir=$(mktemp -d -p "$tmpbase")
+        export TMPDIR="$tempdir/tmp"
+        mkdir --parents "$TMPDIR" || exit 1
+
+        cleanup_entry_script() {
+          local status=$?
+          if [ -n "''${tempdir:-}" ] && [ -d "$tempdir" ]; then
+            chmod -R u+w "$tempdir" 2>/dev/null || true
+            rm -rf "$tempdir"
+          fi
+          exit $status
+        }
+
+        trap cleanup_entry_script EXIT
 
         ${extraEnvCommands}
-
-        mkdir --parents "$appdir" "$tempdir/bind" "$tempdir/overlay" || exit 1
+        mkdir --parents "$tempdir/bind" "$tempdir/overlay" || exit 1
 
         # Creating the mount namespace and launching the environment script
         ${pkgs.util-linux}/bin/unshare --map-root-user --mount "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
-
-        rm -r "$tempdir"
       '';
 
       entryScriptWrapper = pkgs.writeShellScript "runApp-wrapped" (
@@ -64,6 +84,11 @@ stdenv.mkDerivation {
         }:
         let
           deps = builtins.map (x: "\"" + x + "\"") overlayDependencies;
+          renderEnvExports =
+            env:
+            builtins.concatStringsSep "\n" (
+              pkgs.lib.mapAttrsToList (n: v: "export ${n}=${v}") env
+            );
         in
         pkgs.writeShellScript "runEnv" ''
           deps=(${pkgs.lib.strings.concatStringsSep " " deps});
@@ -85,13 +110,24 @@ stdenv.mkDerivation {
 
           cd "$tempdir/overlay/"
 
+          cleanup_runtime_session() {
+            local status=$?
+            ${if session == null then "" else session.postCommands}
+            exit $status
+          }
+
+          trap cleanup_runtime_session EXIT
+
+          ${if session == null then "" else renderEnvExports session.env}
+          ${if session == null then "" else session.preCommands}
+
           ${extraPreLaunchCommands}
 
           # Launching the user namespace to map the original user and running the specified application
           ${pkgs.util-linux}/bin/unshare \
             --map-user="$originalUser" \
             ${if workingDirectory != null then "--wd \"$tempdir/overlay/${workingDirectory}\"" else ""} \
-            ${interpreter} "$tempdir/overlay/${executablePath}" "$@"
+            ${launchProgram} "$tempdir/overlay/${executablePath}" "$@"
         '';
     in
     ''
@@ -124,7 +160,7 @@ stdenv.mkDerivation {
       basePackage
       executablePath
       overlayDependencies
-      interpreter
+      launchProgram
       ;
   };
 }

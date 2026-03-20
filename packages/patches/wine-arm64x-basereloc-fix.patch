@@ -1,0 +1,48 @@
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index 8acbf0c24d3d..79c56b59c2e7 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -2965,6 +2965,34 @@ static IMAGE_DATA_DIRECTORY *get_data_dir( IMAGE_NT_HEADERS *nt, SIZE_T total_si
+ }
+ 
+ 
++static IMAGE_BASE_RELOCATION *get_base_relocation_end( char *base, IMAGE_NT_HEADERS *nt,
++                                                       IMAGE_DATA_DIRECTORY *dir, SIZE_T total_size,
++                                                       IMAGE_SECTION_HEADER *sections )
++{
++    IMAGE_BASE_RELOCATION *end = (IMAGE_BASE_RELOCATION *)(base + dir->VirtualAddress + dir->Size);
++
++#ifdef __aarch64__
++    IMAGE_DATA_DIRECTORY *loadcfg;
++    const IMAGE_LOAD_CONFIG_DIRECTORY *cfg;
++    ULONG sec, offset, size;
++
++    if (!(loadcfg = get_data_dir( nt, total_size, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG ))) return end;
++    cfg = (const IMAGE_LOAD_CONFIG_DIRECTORY *)(base + loadcfg->VirtualAddress);
++    size = min( loadcfg->Size, cfg->Size );
++    if (size <= offsetof( IMAGE_LOAD_CONFIG_DIRECTORY, DynamicValueRelocTableSection )) return end;
++    sec = cfg->DynamicValueRelocTableSection;
++    offset = cfg->DynamicValueRelocTableOffset;
++    if (!sec || sec > nt->FileHeader.NumberOfSections) return end;
++    if (offset >= sections[sec - 1].Misc.VirtualSize) return end;
++    if (sections[sec - 1].VirtualAddress + offset <= dir->VirtualAddress) return end;
++
++    end = min( end, (IMAGE_BASE_RELOCATION *)(base + sections[sec - 1].VirtualAddress + offset) );
++#endif
++
++    return end;
++}
++
++
+ /***********************************************************************
+  *           process_relocation_block
+  *
+@@ -3227,7 +3255,7 @@ static NTSTATUS map_image_into_view( struct file_view *view, const UNICODE_STRIN
+         if ((dir = get_data_dir( nt, total_size, IMAGE_DIRECTORY_ENTRY_BASERELOC )))
+         {
+             IMAGE_BASE_RELOCATION *rel = (IMAGE_BASE_RELOCATION *)(ptr + dir->VirtualAddress);
+-            IMAGE_BASE_RELOCATION *end = (IMAGE_BASE_RELOCATION *)((char *)rel + dir->Size);
++            IMAGE_BASE_RELOCATION *end = get_base_relocation_end( ptr, nt, dir, total_size, sec );
+ 
+             while (rel && rel < end - 1 && rel->SizeOfBlock && rel->VirtualAddress < total_size)
+                 rel = process_relocation_block( ptr + rel->VirtualAddress, rel, delta );

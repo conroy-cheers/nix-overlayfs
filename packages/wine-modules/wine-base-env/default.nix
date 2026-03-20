@@ -5,14 +5,23 @@
   lib,
   stdenv,
   fetchurl,
+  util-linux,
 
-  wine,
-  xorg,
+  runtime,
+  xorg-server,
   jd-diff-patch,
 
   overlayfsLib,
 }:
 let
+  session = runtime.mkSession {
+    phase = "build";
+    sessionRoot = "$PWD/runtime-session";
+    overlayRoot = "$PWD/prefix";
+    homeDir = "$HOME";
+  };
+  prefixInitCommands =
+    if runtime ? mkPrefixInitCommands then runtime.mkPrefixInitCommands session else "";
   wineMonoDownloads = {
     "11.0.0" = {
       url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.0.0/wine-mono-11.0.0-x86.msi";
@@ -84,7 +93,7 @@ let
       "Proton8-13" = null;
       "Proton7-36" = "7.0.0";
     }
-    .${wine.version};
+    .${runtime.version} or null;
 
   needFramebuffer =
     {
@@ -103,41 +112,13 @@ let
       "Proton8-13" = false;
       "Proton7-36" = false;
     }
-    .${wine.version};
+    .${runtime.version} or false;
 
   wine-mono =
     if (wineMonoVersion != null) then (fetchurl wineMonoDownloads.${wineMonoVersion}) else null;
-in
-stdenv.mkDerivation {
-  pname = "wine-base-env";
-  version = "0.0.1";
 
-  nativeBuildInputs = with overlayfsLib.scripts; [
-    wine
-    xorg.xorgserver
-    reg2json
-    json2reg
-    jd-diff-patch
-  ];
-
-  src = wine-mono;
-
-  unpackPhase = "true";
-
-  buildPhase =
-    (lib.optionalString (wine-mono != null) ''
-      cp $src ./mono.msi
-    '')
-    + ''
-      mkdir prefix home cache
-      export HOME=$(realpath ./home)
-      export XDG_CACHE_HOME=$(realpath ./cache)
-      export WINEPREFIX=$PWD/prefix
-
-      echo "printing env..."
-      env
-    ''
-    + (lib.optionalString needFramebuffer ''
+  bootstrapCommands =
+    (lib.optionalString needFramebuffer ''
       # run virtual framebuffer
       Xvfb :999 -screen 0 1600x900x16 &
       XVFB_PROC_ID=$!
@@ -146,22 +127,70 @@ stdenv.mkDerivation {
     + (lib.optionalString (wine-mono != null) ''
       # install mono
       echo "Installing mono..."
-      ${lib.getExe wine} start /wait "mono.msi"
+      ${session.commands.wine} start /wait "mono.msi"
 
-      wineserver --wait
+      ${session.commands.wineserver} --wait
       echo "Mono installation finished."
     '')
     + (lib.optionalString (wine-mono == null) ''
       echo "Initialising wineprefix..."
-      ${lib.getExe wine} wineboot
-      wineserver --wait
+      ${session.commands.wineboot}
+      ${session.commands.wineserver} --wait
       echo "wineprefix initialised."
+    '')
+    + (lib.optionalString (prefixInitCommands != "") ''
+      ${prefixInitCommands}
     '')
     + (lib.optionalString needFramebuffer ''
       # terminate framebuffer
-      kill $XVFB_PROC_ID;
+      kill $XVFB_PROC_ID
+    '');
+in
+stdenv.mkDerivation {
+  pname = "base-env";
+  version = "0.0.1";
+
+  nativeBuildInputs =
+    with overlayfsLib.scripts;
+    session.buildInputs
+    ++ [
+      xorg-server
+      reg2json
+      json2reg
+      jd-diff-patch
+    ];
+
+  src = wine-mono;
+
+  unpackPhase = "true";
+
+  buildPhase =
+    (lib.optionalString (wine-mono != null) ''
+      cp $src ./mono.msi
+    ''
+    + ''
+      mkdir prefix home cache
+      ${builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}=${v}") session.env)}
+      ${session.preCommands}
+      export HOME=$(realpath ./home)
+      export XDG_CACHE_HOME=$(realpath ./cache)
+      export WINEPREFIX=$PWD/prefix
+
+      echo "printing env..."
+      env
+      cat > ./bootstrap-prefix.sh <<'EOF'
+      #!${stdenv.shell}
+      set -euo pipefail
+
+      ${bootstrapCommands}
+      EOF
+      chmod +x ./bootstrap-prefix.sh
+
+      ./bootstrap-prefix.sh
     '')
     + ''
+      ${session.postCommands}
+
       # convert registry to JSON, apply patches
       reg2json ./prefix/system.reg > ./system.json
       jd -f=merge -o ./prefix/system.json -p "${overlayfsLib.diffs.system}" "./system.json" || true
@@ -195,6 +224,6 @@ stdenv.mkDerivation {
   meta.executableName = "";
 
   passthru = {
-    inherit wine wine-mono;
+    inherit runtime wine-mono;
   };
 }

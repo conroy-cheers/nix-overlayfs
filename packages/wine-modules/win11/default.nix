@@ -1,17 +1,16 @@
 {
-  lib,
   writeText,
-  wine,
+  runtime,
   overlayfsLib,
 }:
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "win11";
   version = "1";
   src = writeText "win11-noop.txt" "";
   packageName = "win11";
-  unshareInstall = { }: ''
-    ${lib.getExe' wine "winecfg"} -v win11
-    wineserver --wait
+  unshareInstall = { session, ... }: ''
+    ${session.commands.winecfg} -v win11
+    ${session.commands.wineserver} --wait
   '';
 }

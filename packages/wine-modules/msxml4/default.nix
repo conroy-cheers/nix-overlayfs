@@ -1,10 +1,10 @@
 {
   fetchurl,
-  wine,
+  runtime,
   overlayfsLib,
 }:
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "msxml";
   version = "4.0";
   src = fetchurl {
@@ -12,10 +12,10 @@ overlayfsLib.mkWinePackage {
     hash = "sha256-R8KuZ5w3gV2pJnyB/Dd33pAK0lUcEcGcKECTizRtcLs=";
   };
   unshareInstall =
-    { wineExe }:
+    { session, ... }:
     ''
-      ${wineExe} msiexec /i $src /q
-      wineserver --wait
+      ${session.commands.wine} msiexec /i $src /q
+      ${session.commands.wineserver} --wait
     '';
   packageName = "msxml4";
 }

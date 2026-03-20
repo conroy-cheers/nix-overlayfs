@@ -4,14 +4,14 @@
   lib,
   runCommand,
   fetchurl,
-  mkWinePackage,
+  mkWindowsPackage,
 
   yj,
 
   overlayfsLib,
 }:
 {
-  wine,
+  runtime,
   packageName,
   executableName ? "",
   executablePath ? "",
@@ -37,16 +37,24 @@ let
     in
     builtins.fromJSON (builtins.readFile "${manifest-json}");
 
-  # Select the installer files based on the architecture
+  preferredArchitectures =
+    if runtime ? preferredInstallerArchitectures then
+      runtime.preferredInstallerArchitectures
+    else if runtime ? preferredInstallerArchitecture then
+      [ runtime.preferredInstallerArchitecture ]
+    else if runtime.windowsArch == "win32" then
+      [ "x86" ]
+    else
+      [ "x64" ];
+
+  matchingInstallersFor = arch: builtins.filter (x: x.Architecture == arch) manifest.Installers;
+
+  candidateInstallers = builtins.concatLists (builtins.map matchingInstallersFor preferredArchitectures);
+
+  # Select the installer files based on the preferred Windows binary architecture for the runtime.
   installer = builtins.head (
     builtins.filter (x: (x.InstallerType or "exe") != "zip") (
-      (lib.optionals (wine.wineArch != "win32") (
-        builtins.filter (x: x.Architecture == "x64") manifest.Installers
-      ))
-      ++ (lib.optionals (wine.wineArch == "win32") (
-        builtins.filter (x: x.Architecture == "x86") manifest.Installers
-      ))
-      ++ (builtins.filter (x: x.Architecture == "neutral") manifest.Installers)
+      candidateInstallers ++ (matchingInstallersFor "neutral")
     )
   );
 
@@ -62,8 +70,8 @@ let
   # Use supplied silent flags or default to predefined ones
   silentFlag = if silentFlags != null then silentFlags else silentFlagsIndex.${installerType};
 in
-mkWinePackage {
-  inherit wine;
+mkWindowsPackage {
+  inherit runtime;
 
   # Extract metadata from manifest
   pname = manifest.PackageIdentifier;

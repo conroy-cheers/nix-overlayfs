@@ -1,13 +1,13 @@
 # Maintainer: Conroy Cheers <conroy@corncheese.org>
 # Based on original work by Libor Štěpánek 2025
 {
-  wine,
+  runtime,
   overlayfsLib,
 }:
 overlayfsLib.mkWinpkgsPackage {
-  inherit wine;
+  inherit runtime;
   packageName = "AutoHotkey/AutoHotkey";
   version = "1.1.36.01";
   executableName = "autohotkey";
-  executablePath = "${wine.programFilesPath}/AutoHotkey/AutoHotkey.exe";
+  executablePath = "${runtime.programFilesPath}/AutoHotkey/AutoHotkey.exe";
 }

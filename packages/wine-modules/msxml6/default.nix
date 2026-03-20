@@ -1,10 +1,10 @@
 {
   fetchurl,
-  wine,
+  runtime,
   overlayfsLib,
 }:
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "msxml";
   version = "6.0";
   src = fetchurl {

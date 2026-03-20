@@ -1,7 +1,7 @@
 {
   lib,
   fetchurl,
-  wine,
+  runtime,
   overlayfsLib,
   cabextract,
 
@@ -20,13 +20,13 @@
 }:
 let
   installPath =
-    if wine.wineArch == "wow64" then
+    if runtime.windowsArch == "wow64" then
       "windows/syswow64"
     else
       "windows/system32";
 in
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "msvcp";
   version = "6.0";
   src = fetchurl {
@@ -34,12 +34,12 @@ overlayfsLib.mkWinePackage {
     hash = "sha256-z50N2WjnjV5oWm6mq1jsQ4rArCQxaxTScbAs88ztZ9k=";
   };
   unshareInstall =
-    { wineExe }:
+    { session, ... }:
     ''
       # Extract vcredist.exe
       mkdir vcrun6
       VCRUN6DIR=$(pwd)/vcrun6
-      ${wineExe} "$src" "/T:Z:$VCRUN6DIR" /c /q
+      ${session.commands.wine} "$src" "/T:Z:$VCRUN6DIR" /c /q
 
       ${lib.getExe cabextract} -q -d $VCRUN6DIR $VCRUN6DIR/vcredist.exe
 
@@ -48,7 +48,7 @@ overlayfsLib.mkWinePackage {
       done
       rm -rf $VCRUN6DIR
 
-      wineserver --wait
+      ${session.commands.wineserver} --wait
     '';
   extraPathsToInclude = map (x: installPath + "/" + x) dllsToInstall;
   packageName = "msvcp60";

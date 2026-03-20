@@ -13,9 +13,9 @@ in
 pkgs.lib.makeScope newScope (
   self: with self; {
     scripts = callPackage ./scripts { };
-    composeWineLayers = callPackage ./composeWineLayers.nix { };
+    composeWindowsLayers = callPackage ./composeWindowsLayers.nix { };
     mkOverlayfsPackage = callPackage ./mkOverlayfsPackage.nix { };
-    mkWinePackage = callPackage ./mkWinePackage.nix { };
+    mkWindowsPackage = callPackage ./mkWindowsPackage.nix { };
     mkWinpkgsPackage = callPackage ./mkWinpkgsPackage.nix { };
     diffs = {
       system = ./diffs/system.json.diff;

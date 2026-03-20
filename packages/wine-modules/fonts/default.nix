@@ -2,23 +2,23 @@
   lib,
   writeText,
   liberation_ttf,
-  wine,
+  runtime,
   overlayfsLib,
 }:
-overlayfsLib.mkWinePackage {
-  inherit wine;
+overlayfsLib.mkWindowsPackage {
+  inherit runtime;
   pname = "fonts";
   version = lib.getVersion liberation_ttf;
   src = writeText "fonts-noop.txt" "";
   packageName = "fonts";
-  unshareInstall = { }: ''
+  unshareInstall = { session, ... }: ''
     font_dir="$WINEPREFIX/drive_c/windows/Fonts"
 
     mkdir -p "$font_dir"
     find ${liberation_ttf} -type f \( -iname '*.ttf' -o -iname '*.ttc' -o -iname '*.otf' \) \
       -exec cp {} "$font_dir/" \;
 
-    ${lib.getExe' wine "wineboot"} -u
-    wineserver --wait
+    ${session.commands.wineboot} -u
+    ${session.commands.wineserver} --wait
   '';
 }
