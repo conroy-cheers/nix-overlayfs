@@ -62,7 +62,7 @@ let
         backend = "wine-arm64ec-fex";
         preferredInstallerArchitecture = "x64";
         capabilities = {
-          supportsWin32WoW = false;
+          supportsWin32WoW = true;
           usesFexWoa = true;
         };
         extraPreCommands = "";
@@ -94,6 +94,9 @@ let
           mkPrefixInitCommands = session: ''
             ${session.commands.wine} reg add 'HKLM\Software\Microsoft\Wow64' /v amd64 /d libarm64ecfex.dll /f
             ${session.commands.wine} reg add 'HKLM\Software\Microsoft\Wow64\amd64' /ve /d libarm64ecfex.dll /f
+            ${session.commands.wine} reg add 'HKLM\Software\Microsoft\Wow64' /v x86 /d libwow64fex.dll /f
+            ${session.commands.wine} reg add 'HKLM\Software\Microsoft\Wow64\x86' /ve /d libwow64fex.dll /f
+            ${session.commands.wine} reg add 'HKLM\System\CurrentControlSet\Control\Session Manager\KnownDLLs' /v xtajit /d libwow64fex.dll /f
             ${session.commands.wine} reg add 'HKLM\System\CurrentControlSet\Control\Session Manager\KnownDLLs' /v xtajit64 /d libarm64ecfex.dll /f
             ${session.commands.wineserver} --wait
           '';

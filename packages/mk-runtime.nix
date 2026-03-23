@@ -16,6 +16,7 @@
 }:
 let
   runtimeVersion = if (wine ? version) then wine.version else lib.getVersion wine;
+  runtimeCapabilities = capabilities;
 
   toolsPackage = symlinkJoin {
     pname = "${if (wine ? pname) then wine.pname else "wine"}-${windowsArch}-tools";
@@ -50,7 +51,7 @@ rec {
     canRunWin64 = windowsArch != "win32";
     requires4kPages = false;
     requiresGuestRootfs = false;
-  } // capabilities;
+  } // runtimeCapabilities;
 
   mkSession =
     {

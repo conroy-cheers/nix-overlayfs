@@ -14,6 +14,7 @@ pkgs.lib.makeScope newScope (
   self: with self; {
     scripts = callPackage ./scripts { };
     composeWindowsLayers = callPackage ./composeWindowsLayers.nix { };
+    mkGraphicsBootstrap = callPackage ./mkGraphicsBootstrap.nix { };
     mkOverlayfsPackage = callPackage ./mkOverlayfsPackage.nix { };
     mkWindowsPackage = callPackage ./mkWindowsPackage.nix { };
     mkWinpkgsPackage = callPackage ./mkWinpkgsPackage.nix { };

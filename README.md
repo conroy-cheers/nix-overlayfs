@@ -54,6 +54,12 @@ prefixes, saving on build/install time and disk space.
 `commands.wine64` is optional; on `wow64` runtimes it aliases the main `wine`
 launcher instead of a separate `bin/wine64` path.
 
+For runtime wrappers that need host graphics bootstrap, the library also exposes
+`overlayfsLib.mkGraphicsBootstrap`. It returns an `extraPreLaunchCommands`
+fragment that leaves host graphics discovery untouched by default and supports
+an explicit `NIX_OVERLAYFS_GRAPHICS_STACK=system` override for hosts that
+surface their GL/EGL/Vulkan stack via `/run/opengl-driver`.
+
 ## Migrating from `composeWineLayers`
 
 The old `composeWineLayers` entrypoint has been replaced by
@@ -115,8 +121,9 @@ This is the native-host Wine path:
 - Wine itself is built as native `aarch64-linux`.
 - The Wine build is configured with `--enable-archs=arm64ec,aarch64,i386 --disable-tests`.
 - The FEX WoA DLLs are bundled into `lib/wine/aarch64-windows/`.
-- The base prefix sets `HKLM\Software\Microsoft\Wow64\amd64=libarm64ecfex.dll`
-  so x64 Windows binaries can be dispatched through the FEX WoA layer.
+- The base prefix explicitly sets `HKLM\Software\Microsoft\Wow64\amd64=libarm64ecfex.dll`
+  and `HKLM\Software\Microsoft\Wow64\x86=libwow64fex.dll`, and mirrors those
+  choices into `KnownDLLs\xtajit64` and `KnownDLLs\xtajit`.
 
 The runtime shape is:
 
@@ -125,11 +132,8 @@ app -> wine (native aarch64-linux) -> Windows ARM64EC/FEX WoA bridge -> host
 ```
 
 This keeps Wine itself native on the host and avoids the separate Linux guest
-userspace layer used by the older guest-FEX implementation.
-
-The current implementation is intended for 64-bit Windows applications. 32-bit
-WoW support is not enabled by default in this path, even though the FEX WoA DLL
-package also includes `libwow64fex.dll`.
+userspace layer used by the older guest-FEX implementation, while making both
+x64 and x86 WoW dispatch explicit in the runtime prefix.
 
 ### 2. `nativeModules`
 
