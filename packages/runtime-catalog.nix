@@ -65,7 +65,32 @@ let
           supportsWin32WoW = true;
           usesFexWoa = true;
         };
-        extraPreCommands = "";
+        extraPreCommands = ''
+          mkdir -p \
+            "$WINEPREFIX/drive_c/windows/system32" \
+            "$WINEPREFIX/drive_c/windows/syswow64" \
+            "$WINEPREFIX/drive_c/windows/sysarm32"
+
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libarm64ecfex.dll \
+            "$WINEPREFIX/drive_c/windows/system32/xtajit64.dll"
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libarm64ecfex.dll \
+            "$WINEPREFIX/drive_c/windows/syswow64/xtajit64.dll"
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libarm64ecfex.dll \
+            "$WINEPREFIX/drive_c/windows/sysarm32/xtajit64.dll"
+
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libwow64fex.dll \
+            "$WINEPREFIX/drive_c/windows/system32/xtajit.dll"
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libwow64fex.dll \
+            "$WINEPREFIX/drive_c/windows/syswow64/xtajit.dll"
+          ln -sfn \
+            ${toolchains.nativeArm64ecWineWithFex}/lib/wine/aarch64-windows/libwow64fex.dll \
+            "$WINEPREFIX/drive_c/windows/sysarm32/xtajit.dll"
+        '';
         extraPostCommands = "";
       }
     else
