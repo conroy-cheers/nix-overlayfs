@@ -60,17 +60,27 @@ rec {
       overlayRoot,
       homeDir,
     }:
+    let
+      privateRuntimeEnv =
+        lib.optionalAttrs (phase != "launch") {
+          XDG_RUNTIME_DIR = ''"${sessionRoot}/xdg-runtime"'';
+        };
+      privateRuntimePreCommands =
+        lib.optionalString (phase != "launch") ''
+          mkdir -p "${sessionRoot}/xdg-runtime"
+          chmod 700 "${sessionRoot}/xdg-runtime"
+        '';
+    in
     {
       buildInputs = [ toolsPackage ];
       env = {
         HOME = ''"${homeDir}"'';
         WINEPREFIX = ''"${overlayRoot}"'';
         WINEARCH = lib.escapeShellArg windowsArch;
-        XDG_RUNTIME_DIR = ''"${sessionRoot}/xdg-runtime"'';
-      } // extraEnv;
+      } // privateRuntimeEnv // extraEnv;
       preCommands = ''
-        mkdir -p "${sessionRoot}" "${sessionRoot}/xdg-runtime"
-        chmod 700 "${sessionRoot}/xdg-runtime"
+        mkdir -p "${sessionRoot}"
+        ${privateRuntimePreCommands}
       '' + extraPreCommands;
       postCommands = extraPostCommands;
       inherit commands;
