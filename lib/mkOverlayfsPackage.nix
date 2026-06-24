@@ -105,10 +105,11 @@ stdenv.mkDerivation {
 
                   nix_overlayfs_record_session_env() {
                     local env_file="$state_dir/session-env"
+                    local env_file_tmp="$env_file.$$"
                     local name=""
                     local value=""
 
-                    : > "$env_file"
+                    : > "$env_file_tmp"
                     for name in \
                       DBUS_SESSION_BUS_ADDRESS \
                       DISPLAY \
@@ -141,9 +142,10 @@ stdenv.mkDerivation {
                     do
                       value="''${!name-}"
                       if [ -n "$value" ]; then
-                        printf '%s=%q\n' "$name" "$value" >> "$env_file"
+                        printf '%s=%q\n' "$name" "$value" >> "$env_file_tmp"
                       fi
                     done
+                    mv "$env_file_tmp" "$env_file"
                   }
 
                   nix_overlayfs_load_session_env() {
@@ -671,15 +673,10 @@ EOF
             launch_pid=$!
           }
 
-          if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
-            callback_url="''${2:-}"
-            if [ -z "$callback_url" ]; then
-              echo "Missing URL for --nix-overlayfs-open-url" >&2
-              exit 2
-            fi
-
+          nix_overlayfs_find_active_session() {
             active_pid=""
             active_overlay=""
+
             if [ -f "$state_dir/session.pid" ] && [ -f "$state_dir/overlay-root" ]; then
               active_pid="$(cat "$state_dir/session.pid" 2>/dev/null || true)"
               active_overlay="$(cat "$state_dir/overlay-root" 2>/dev/null || true)"
@@ -689,17 +686,46 @@ EOF
               && [ -n "$active_overlay" ] \
               && [ -d "$active_overlay" ] \
               && nix_overlayfs_active_session_exists; then
-              nix_overlayfs_load_session_env
-              ${activeUrlSchemeOpenInvocation}
-              exit $?
+              return 0
             fi
 
+            return 1
+          }
+
+          nix_overlayfs_forward_url_to_active_session() {
+            callback_url="$1"
+            if nix_overlayfs_find_active_session; then
+              nix_overlayfs_load_session_env
+              ${activeUrlSchemeOpenInvocation}
+              return $?
+            fi
+
+            return 1
+          }
+
+          nix_overlayfs_write_state_file() {
+            local destination="$1"
+            local value="$2"
+            local tmp_file="$destination.$$"
+
+            printf '%s\n' "$value" > "$tmp_file"
+            mv "$tmp_file" "$destination"
+          }
+
+          nix_overlayfs_prepare_launch_session() {
             nix_overlayfs_configure_host_browser_or_warn
             nix_overlayfs_register_url_handlers
             ${urlSchemeRegistryCommands}
             nix_overlayfs_enable_start_shim
             ${extraPreLaunchCommands}
-            nix_overlayfs_launch_application "$tempdir/overlay/${executablePath}" "$callback_url"
+
+            nix_overlayfs_write_state_file "$state_dir/session.pid" "$$"
+            nix_overlayfs_write_state_file "$state_dir/overlay-root" "$tempdir/overlay"
+            nix_overlayfs_record_session_env
+          }
+
+          nix_overlayfs_run_launch_loop() {
+            nix_overlayfs_launch_application "$tempdir/overlay/${executablePath}" "$@"
             launch_running=1
             launch_status=0
 
@@ -717,39 +743,28 @@ EOF
             fi
 
             nix_overlayfs_run_post_launch_once
-            exit "$launch_status"
-          fi
+            return "$launch_status"
+          }
 
-          nix_overlayfs_configure_host_browser_or_warn
-          nix_overlayfs_register_url_handlers
-          ${urlSchemeRegistryCommands}
-          nix_overlayfs_enable_start_shim
-          ${extraPreLaunchCommands}
-
-          printf '%s\n' "$$" > "$state_dir/session.pid"
-          printf '%s\n' "$tempdir/overlay" > "$state_dir/overlay-root"
-          nix_overlayfs_record_session_env
-
-          # Launching the user namespace to map the original user and running the specified application
-          nix_overlayfs_launch_application "$tempdir/overlay/${executablePath}" "$@"
-          launch_running=1
-          launch_status=0
-
-          while [ "$launch_running" = 1 ] || nix_overlayfs_overlay_process_exists "$tempdir/overlay"; do
-            nix_overlayfs_process_url_requests
-            if [ "$launch_running" = 1 ] && ! kill -0 "$launch_pid" 2>/dev/null; then
-              wait "$launch_pid" || launch_status=$?
-              launch_running=0
+          if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
+            callback_url="''${2:-}"
+            if [ -z "$callback_url" ]; then
+              echo "Missing URL for --nix-overlayfs-open-url" >&2
+              exit 2
             fi
-            sleep 1
-          done
 
-          if [ "$launch_running" = 1 ]; then
-            wait "$launch_pid" || launch_status=$?
+            if nix_overlayfs_forward_url_to_active_session "$callback_url"; then
+              exit 0
+            fi
+
+            nix_overlayfs_prepare_launch_session
+            nix_overlayfs_run_launch_loop "$callback_url"
+            exit "$?"
           fi
 
-          nix_overlayfs_run_post_launch_once
-          exit "$launch_status"
+          nix_overlayfs_prepare_launch_session
+          nix_overlayfs_run_launch_loop "$@"
+          exit "$?"
         '';
     in
     ''

@@ -55,14 +55,16 @@ pkgs.stdenvNoCC.mkDerivation {
     grep -F 'mount --bind "$tempdir/empty-ld.so.preload" /etc/ld.so.preload' "$script"
     grep -F 'warning: failed to hide /etc/ld.so.preload in Wine mount namespace' "$script"
     grep -F 'nix_overlayfs_launch_application()' "$script"
+    grep -F 'nix_overlayfs_prepare_launch_session()' "$script"
+    grep -F 'nix_overlayfs_run_launch_loop()' "$script"
     grep -F 'nix_overlayfs_launch_application "$tempdir/overlay//drive_c/windows/system32/notepad.exe" "$@"' "$script"
 
     awk '
       /^[[:space:]]*nix_overlayfs_hide_ld_so_preload$/ && !hide_call { hide_call = NR }
       /session-precommands/ && !precommands { precommands = NR }
-      /^[[:space:]]*nix_overlayfs_configure_host_browser\(\)/ && !winebrowser { winebrowser = NR }
+      /^[[:space:]]*nix_overlayfs_prepare_launch_session$/ && !prepare { prepare = NR }
       END {
-        if (!hide_call || !precommands || !winebrowser || hide_call >= precommands || hide_call >= winebrowser) {
+        if (!hide_call || !precommands || !prepare || hide_call >= precommands || hide_call >= prepare) {
           print "ld.so.preload masking must run before session precommands and Wine registry helpers" > "/dev/stderr"
           exit 1
         }

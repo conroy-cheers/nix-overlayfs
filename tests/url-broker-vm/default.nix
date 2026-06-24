@@ -24,6 +24,7 @@ else
         #include <windows.h>
         #include <shellapi.h>
         #include <stdlib.h>
+        #include <wchar.h>
 
         int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command_line, int show_command) {
           int argc = 0;
@@ -31,10 +32,10 @@ else
         if (argc > 1) {
             HANDLE file = CreateFileW(
               L"Z:\\tmp\\nix-overlayfs-return-url",
-              GENERIC_WRITE,
-              0,
+              FILE_APPEND_DATA,
+              FILE_SHARE_READ | FILE_SHARE_WRITE,
               NULL,
-              CREATE_ALWAYS,
+              OPEN_ALWAYS,
               FILE_ATTRIBUTE_NORMAL,
               NULL
             );
@@ -47,6 +48,19 @@ else
             WriteFile(file, utf8, (DWORD)(length - 1), &bytes, NULL);
             WriteFile(file, "\n", 1, &bytes, NULL);
             CloseHandle(file);
+            if (wcsstr(argv[1], L"cold-start") != NULL) {
+              HANDLE cold_started = CreateFileW(
+                L"Z:\\tmp\\nix-overlayfs-cold-started",
+                GENERIC_WRITE,
+                0,
+                NULL,
+                CREATE_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                NULL
+              );
+              if (cold_started != INVALID_HANDLE_VALUE) CloseHandle(cold_started);
+              Sleep(20000);
+            }
             return 0;
           }
 
@@ -169,6 +183,33 @@ else
           "chown alice:users /home/alice/.local/share/applications/nix-overlayfs-vm-browser.desktop"
       )
       machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; update-desktop-database $XDG_DATA_HOME/applications; xdg-mime default nix-overlayfs-vm-browser.desktop x-scheme-handler/http; xdg-mime default nix-overlayfs-vm-browser.desktop x-scheme-handler/https'")
+
+      machine.succeed("rm -f /tmp/nix-overlayfs-return-url /tmp/nix-overlayfs-cold-started /tmp/nix-overlayfs-cold-start.log /tmp/nix-overlayfs-cold-session.pid /tmp/nix-overlayfs-cold-overlay-root")
+      machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; nohup ${probePackage}/bin/url-broker-vm --nix-overlayfs-open-url probe://cold-start?state=initial > /tmp/nix-overlayfs-cold-start.log 2>&1 &'")
+      machine.succeed(
+          "timeout 60 bash -c 'until [ -e /tmp/nix-overlayfs-cold-started ]; do sleep 0.25; done' || "
+          "{ echo COLD_START_LOG; cat /tmp/nix-overlayfs-cold-start.log || true; "
+          "echo STATE; find /home/alice/.local/share/url-broker-vm/.nix-overlayfs -maxdepth 2 -type f -print -exec sh -c 'echo --- $1; cat $1 || true' sh {} \\; 2>/dev/null || true; false; }"
+      )
+      machine.succeed("test -s /home/alice/.local/share/url-broker-vm/.nix-overlayfs/session.pid")
+      machine.succeed("test -s /home/alice/.local/share/url-broker-vm/.nix-overlayfs/overlay-root")
+      machine.succeed("test -s /home/alice/.local/share/url-broker-vm/.nix-overlayfs/session-env")
+      machine.succeed("grep -F 'WINEPREFIX=' /home/alice/.local/share/url-broker-vm/.nix-overlayfs/session-env")
+      machine.succeed("cp /home/alice/.local/share/url-broker-vm/.nix-overlayfs/session.pid /tmp/nix-overlayfs-cold-session.pid")
+      machine.succeed("cp /home/alice/.local/share/url-broker-vm/.nix-overlayfs/overlay-root /tmp/nix-overlayfs-cold-overlay-root")
+      machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; xdg-open probe://cold-second?state=same-session'")
+      machine.succeed(
+          "timeout 60 bash -c \"until grep -Fxq 'probe://cold-second?state=same-session' /tmp/nix-overlayfs-return-url 2>/dev/null; do sleep 0.25; done\" || "
+          "{ echo COLD_START_LOG; cat /tmp/nix-overlayfs-cold-start.log || true; "
+          "echo RETURN_URL; cat /tmp/nix-overlayfs-return-url || true; "
+          "echo STATE; find /home/alice/.local/share/url-broker-vm/.nix-overlayfs -maxdepth 2 -type f -print -exec sh -c 'echo --- $1; cat $1 || true' sh {} \\; 2>/dev/null || true; false; }"
+      )
+      machine.succeed("cmp /tmp/nix-overlayfs-cold-session.pid /home/alice/.local/share/url-broker-vm/.nix-overlayfs/session.pid")
+      machine.succeed("cmp /tmp/nix-overlayfs-cold-overlay-root /home/alice/.local/share/url-broker-vm/.nix-overlayfs/overlay-root")
+      machine.succeed(
+          "timeout 60 bash -c 'pid=$(cat /tmp/nix-overlayfs-cold-session.pid); while kill -0 \"$pid\" 2>/dev/null; do sleep 0.25; done' || "
+          "{ echo COLD_START_LOG; cat /tmp/nix-overlayfs-cold-start.log || true; false; }"
+      )
 
       machine.succeed("rm -f /tmp/nix-overlayfs-browser-url /tmp/nix-overlayfs-return-url /tmp/nix-overlayfs-probe-started /tmp/nix-overlayfs-url-broker.log")
       machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; nohup ${probePackage}/bin/url-broker-vm > /tmp/nix-overlayfs-url-broker.log 2>&1 &'")
