@@ -128,7 +128,7 @@ stdenv.mkDerivation {
                       VK_LAYER_PATH \
                       WAYLAND_DISPLAY \
                       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS \
-                      WINEWAYLAND_SURFACE_SCALE \
+                      WINEPREFIX \
                       WINEARCH \
                       WINEDEBUG \
                       WINEDLLPATH \
