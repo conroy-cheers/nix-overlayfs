@@ -1,0 +1,24 @@
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -149,0 +150,18 @@ void wayland_win_data_release(struct wayland_win_data *data)
++static double get_wayland_surface_scale(void)
++{
++    const char *env = getenv("WINEWAYLAND_SURFACE_SCALE");
++    char *end = NULL;
++    double scale;
++
++    if (!env || !env[0])
++        return NtUserGetSystemDpiForProcess(0) / 96.0;
++
++    scale = strtod(env, &end);
++    if (end != env && !*end && scale > 0.0)
++        return scale;
++
++    WARN("Ignoring invalid WINEWAYLAND_SURFACE_SCALE=%s\n", debugstr_a(env));
++
++    return NtUserGetSystemDpiForProcess(0) / 96.0;
++}
++
+@@ -178 +196 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+-    conf->scale = NtUserGetSystemDpiForProcess(0) / 96.0;
++    conf->scale = get_wayland_surface_scale();

@@ -6,6 +6,8 @@
   stdenv,
   fetchurl,
   util-linux,
+  msitools,
+  coreutils,
 
   runtime,
   xorg-server,
@@ -23,6 +25,10 @@ let
   prefixInitCommands =
     if runtime ? mkPrefixInitCommands then runtime.mkPrefixInitCommands session else "";
   wineMonoDownloads = {
+    "11.1.0" = {
+      url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.1.0/wine-mono-11.1.0-x86.msi";
+      hash = "sha256-3rA0FDH4Jgsgn/9rx53cxUFLl/jpI2q5+9ykzlngqbk=";
+    };
     "11.0.0" = {
       url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.0.0/wine-mono-11.0.0-x86.msi";
       hash = "sha256-1+/t4Lm9z1ITT4zWztWdn+zpdvcLEaQAvbR7hkVpzSc=";
@@ -72,6 +78,8 @@ let
   # https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono
   wineMonoVersion =
     {
+      "11.10" = "11.1.0";
+      "11.8" = "11.1.0";
       "11.3" = "11.0.0";
       "11.1" = "11.0.0";
       "10.19" = "10.3.0";
@@ -97,11 +105,19 @@ let
 
   needFramebuffer =
     {
+      "11.10" = false;
+      "11.8" = false;
       "11.3" = false;
       "11.1" = false;
       "10.19" = false;
       "10.18" = false;
+      "10.17" = false;
+      "10.16" = false;
       "10.15" = false;
+      "10.14" = false;
+      "10.12" = false;
+      "10.10" = false;
+      "10.5" = false;
       "10.0" = false;
       "9.10" = false;
       "8.13" = false;
@@ -114,10 +130,29 @@ let
     }
     .${runtime.version} or false;
 
+  prefixWorkaroundCommands = lib.optionalString (runtime.version == "11.8") ''
+    export WINEDLLOVERRIDES="winebth.sys=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+  '';
+
+  wineMonoPatchCommands = lib.optionalString (wineMonoVersion == "11.1.0") ''
+    # wine-mono 11.1.0's MSI link custom actions fail under the Nix build
+    # sandbox with Wine 11.8. The payload and support MSI still install
+    # cleanly without those deduplication/link actions.
+    msibuild ./mono.msi -q "DELETE FROM InstallExecuteSequence WHERE Action = 'CREATELINKS'"
+    msibuild ./mono.msi -q "DELETE FROM InstallExecuteSequence WHERE Action = 'CREATELINKS64'"
+  '';
+
+  wineBrowserCommands = ''
+    ${coreutils}/bin/timeout --foreground 30s ${session.commands.wine} reg add 'HKCU\Software\Wine\WineBrowser' /v Browsers /t REG_SZ /d '${overlayfsLib.hostUrlOpener}/bin/nix-overlayfs-open-url' /f
+    ${coreutils}/bin/timeout --foreground 30s ${session.commands.wineserver} --wait || true
+  '';
+
   wine-mono =
     if (wineMonoVersion != null) then (fetchurl wineMonoDownloads.${wineMonoVersion}) else null;
 
   bootstrapCommands =
+    prefixWorkaroundCommands
+    +
     (lib.optionalString needFramebuffer ''
       # run virtual framebuffer
       Xvfb :999 -screen 0 1600x900x16 &
@@ -138,6 +173,10 @@ let
       ${session.commands.wineserver} --wait
       echo "wineprefix initialised."
     '')
+    + ''
+      echo "Configuring WineBrowser host URL opener..."
+      ${wineBrowserCommands}
+    ''
     + (lib.optionalString (prefixInitCommands != "") ''
       ${prefixInitCommands}
     '')
@@ -155,6 +194,7 @@ stdenv.mkDerivation {
     session.buildInputs
     ++ [
       xorg-server
+      msitools
       reg2json
       json2reg
       jd-diff-patch
@@ -167,6 +207,7 @@ stdenv.mkDerivation {
   buildPhase =
     (lib.optionalString (wine-mono != null) ''
       cp $src ./mono.msi
+      ${wineMonoPatchCommands}
     ''
     + ''
       mkdir prefix home cache
@@ -196,7 +237,7 @@ stdenv.mkDerivation {
       jd -f=merge -o ./prefix/system.json -p "${overlayfsLib.diffs.system}" "./system.json" || true
       json2reg ./prefix/system.json ./prefix/system.reg
       reg2json ./prefix/user.reg > ./prefix/user.json
-      jd -f=merge -o ./prefix/system.json -p "${overlayfsLib.diffs.user}" "./user.json" || true
+      jd -f=merge -o ./prefix/user.json -p "${overlayfsLib.diffs.user}" "./user.json" || true
       json2reg ./prefix/user.json ./prefix/user.reg
       reg2json ./prefix/userdef.reg > ./prefix/userdef.json
       json2reg ./prefix/userdef.json ./prefix/userdef.reg

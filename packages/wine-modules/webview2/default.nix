@@ -5,4 +5,5 @@
 overlayfsLib.mkWinpkgsPackage {
   inherit runtime;
   packageName = "Microsoft/EdgeWebView2Runtime";
+  wineserverWaitTimeout = 60;
 }

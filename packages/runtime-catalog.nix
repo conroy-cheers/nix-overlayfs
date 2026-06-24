@@ -19,10 +19,17 @@ let
 
   withModules = runtime: makeModules runtime;
 
+  wineWaylandSurfaceScalePatch = ./patches/wine-wayland-surface-scale-env.patch;
+  patchWineWaylandSurfaceScale =
+    wine:
+    wine.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ wineWaylandSurfaceScalePatch ];
+    });
+
   nativeWin32Modules =
     lib.optionalAttrs (!isAarch64) {
       runtime = nativeRuntime {
-        wine = pkgs.winePackages.stableFull;
+        wine = patchWineWaylandSurfaceScale pkgs.winePackages.stableFull;
         windowsArch = "win32";
       };
     };
@@ -30,7 +37,7 @@ let
   nativeWow64Modules =
     lib.optionalAttrs (!isAarch64) {
       runtime = nativeRuntime {
-        wine = pkgs.wineWow64Packages.unstableFull;
+        wine = patchWineWaylandSurfaceScale pkgs.wineWow64Packages.unstableFull;
         windowsArch = "wow64";
       };
     };

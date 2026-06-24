@@ -17,6 +17,7 @@
   gnused,
   moreutils,
   x11vnc,
+  coreutils,
 
   overlayfsLib,
 }:
@@ -30,6 +31,7 @@
   executablePath ? "",
   workingDirectory ? null,
   extraPreLaunchCommands ? "",
+  extraPostLaunchCommands ? "",
   overlayDependencies ? [ ],
   extraPathsToRemove ? [ ],
   extraPathsToInclude ? [ ],
@@ -38,13 +40,18 @@
   postInstall ? "",
   launchVncServer ? false,
   unshareInstall ? null,
+  wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
+  urlSchemes ? [ ],
+  urlSchemeDiscoveryCommands ? "",
+  urlSchemeOpenCommands ? "",
   entrypointWrapper ? (entrypoint: ''exec ${entrypoint} "$@"''),
   ...
 }:
 let
   scripts = overlayfsLib.scripts;
   winedbg = "-all";
+  packageVersion = version;
   pathsToRemove = builtins.concatStringsSep " " (
     builtins.map (val: "\"" + val + "\"") extraPathsToRemove
   );
@@ -66,6 +73,38 @@ let
     overlayRoot = "$tempdir/overlay";
     homeDir = "$HOME";
   };
+  hostBrowserBootstrapCommands = ''
+    nix_overlayfs_upsert_user_reg_section 'Software\\Wine\\WineBrowser' <<EOF
+"Browsers"=$(nix_overlayfs_registry_string '${lib.getExe overlayfsLib.hostUrlOpener}')
+EOF
+  '';
+  protocolRegistrationCommands = ''
+    if [ -s "$nix_overlayfs_url_schemes_file" ]; then
+      nix_overlayfs_protocol_executable=${lib.escapeShellArg executablePath}
+      case "$nix_overlayfs_protocol_executable" in
+        /drive_c/*)
+          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#/drive_c/}"
+          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+          ;;
+        drive_c/*)
+          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#drive_c/}"
+          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+          ;;
+        *)
+          nix_overlayfs_protocol_executable="$(${runtime.toolsPackage}/bin/winepath -w "$tempdir/overlay/${executablePath}")"
+          ;;
+      esac
+      while IFS= read -r nix_overlayfs_url_scheme; do
+        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme" <<EOF
+@=$(nix_overlayfs_registry_string "URL:$nix_overlayfs_url_scheme Protocol")
+"URL Protocol"=""
+EOF
+        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme"'\\shell\\open\\command' <<EOF
+@=$(nix_overlayfs_registry_string "\"$nix_overlayfs_protocol_executable\" \"%1\"")
+EOF
+      done < "$nix_overlayfs_url_schemes_file"
+    fi
+  '';
 
   deps = builtins.map (x: "\"" + x + "\"") overlayDependenciesPlusEnv;
 
@@ -78,6 +117,18 @@ let
 
   basePackage =
     let
+      waitForWineserver =
+        if wineserverWaitTimeout == null then
+          ''
+            ${buildSession.commands.wineserver} --wait
+          ''
+        else
+          ''
+            timeout ${toString wineserverWaitTimeout} ${buildSession.commands.wineserver} --wait || {
+              echo "warning: wineserver did not exit within ${toString wineserverWaitTimeout}s; killing remaining Wine processes" >&2
+              ${buildSession.commands.wineserver} -k || true
+            }
+          '';
       defaultUnshareInstallSteps = (
         [
           ''
@@ -95,9 +146,7 @@ let
         ])
         ++ (lib.optionals (postInstall != "") [ postInstall ])
         ++ [
-          ''
-            ${buildSession.commands.wineserver} --wait
-          ''
+          waitForWineserver
         ]
       );
 
@@ -160,8 +209,9 @@ let
         exit $INSTALL_STATUS
       '';
     in
-    stdenv.mkDerivation rec {
-      inherit pname version src;
+    stdenv.mkDerivation {
+      inherit pname src;
+      version = packageVersion;
 
       unpackPhase = "true";
 
@@ -283,9 +333,14 @@ mkOverlayfsPackage {
     executableName
     executablePath
     workingDirectory
-    extraPreLaunchCommands
     entrypointWrapper
+    urlSchemes
+    urlSchemeDiscoveryCommands
+    urlSchemeOpenCommands
     ;
+  extraPreLaunchCommands = hostBrowserBootstrapCommands + extraPreLaunchCommands;
+  inherit extraPostLaunchCommands;
+  urlSchemeRegistryCommands = protocolRegistrationCommands;
   overlayDependencies = overlayDependenciesPlusEnv;
   session = launchSession;
   launchProgram = launchSession.commands.wine;

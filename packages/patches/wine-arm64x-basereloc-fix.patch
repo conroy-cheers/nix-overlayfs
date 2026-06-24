@@ -2,10 +2,7 @@ diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
 index 8acbf0c24d3d..79c56b59c2e7 100644
 --- a/dlls/ntdll/unix/virtual.c
 +++ b/dlls/ntdll/unix/virtual.c
-@@ -2965,6 +2965,34 @@ static IMAGE_DATA_DIRECTORY *get_data_dir( IMAGE_NT_HEADERS *nt, SIZE_T total_si
- }
- 
- 
+@@ -2967,0 +2968,30 @@ static IMAGE_DATA_DIRECTORY *get_data_dir( IMAGE_NT_HEADERS *nt, SIZE_T total_si
 +static IMAGE_BASE_RELOCATION *get_base_relocation_end( char *base, IMAGE_NT_HEADERS *nt,
 +                                                       IMAGE_DATA_DIRECTORY *dir, SIZE_T total_size,
 +                                                       IMAGE_SECTION_HEADER *sections )
@@ -34,15 +31,6 @@ index 8acbf0c24d3d..79c56b59c2e7 100644
 +}
 +
 +
- /***********************************************************************
-  *           process_relocation_block
-  *
-@@ -3227,7 +3255,7 @@ static NTSTATUS map_image_into_view( struct file_view *view, const UNICODE_STRIN
-         if ((dir = get_data_dir( nt, total_size, IMAGE_DIRECTORY_ENTRY_BASERELOC )))
-         {
-             IMAGE_BASE_RELOCATION *rel = (IMAGE_BASE_RELOCATION *)(ptr + dir->VirtualAddress);
+@@ -3230 +3259 @@ static NTSTATUS map_image_into_view( struct file_view *view, const UNICODE_STRIN
 -            IMAGE_BASE_RELOCATION *end = (IMAGE_BASE_RELOCATION *)((char *)rel + dir->Size);
 +            IMAGE_BASE_RELOCATION *end = get_base_relocation_end( ptr, nt, dir, total_size, sec );
- 
-             while (rel && rel < end - 1 && rel->SizeOfBlock && rel->VirtualAddress < total_size)
-                 rel = process_relocation_block( ptr + rel->VirtualAddress, rel, delta );

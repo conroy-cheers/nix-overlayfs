@@ -5,13 +5,10 @@
   runtime,
 
   dxvk,
+  packageName ? "dxvk",
 }:
 let
-  installPath32 =
-    if runtime.windowsArch == "wow64" then
-      "windows/syswow64"
-    else
-      "windows/system32";
+  installPath32 = if runtime.windowsArch == "wow64" then "windows/syswow64" else "windows/system32";
   installPath64 = "windows/system32";
   dllsToInstall = [
     "d3d8.dll"
@@ -36,7 +33,7 @@ overlayfsLib.mkWindowsPackage {
   extraPathsToInclude =
     (map (x: installPath32 + "/" + x) dllsToInstall)
     ++ lib.optionals (runtime.windowsArch == "wow64") (map (x: installPath64 + "/" + x) dllsToInstall);
-  packageName = "dxvk";
+  inherit packageName;
   runtimeEnvVars = {
     WINEDLLOVERRIDES = "d3d8,d3d9,d3d10core,d3d11,dxgi=n";
   };

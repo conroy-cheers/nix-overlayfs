@@ -13,6 +13,9 @@ in
 pkgs.lib.makeScope newScope (
   self: with self; {
     scripts = callPackage ./scripts { };
+    hostUrlOpener = callPackage ./host-url-opener.nix { };
+    hostStartShim = callPackage ./host-start-shim.nix { };
+    urlSchemeDiscoverers = callPackage ./url-scheme-discoverers.nix { };
     composeWindowsLayers = callPackage ./composeWindowsLayers.nix { };
     mkGraphicsBootstrap = callPackage ./mkGraphicsBootstrap.nix { };
     mkOverlayfsPackage = callPackage ./mkOverlayfsPackage.nix { };

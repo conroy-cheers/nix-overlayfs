@@ -20,6 +20,7 @@
   extraPathsToRemove ? [ ],
   silentFlags ? null,
   launchVncServer ? false,
+  wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
   ...
 }:
@@ -65,6 +66,9 @@ let
   silentFlagsIndex = {
     nullsoft = "/S";
     inno = "/VERYSILENT";
+    msi = "/qn /norestart";
+    wix = "/quiet /norestart";
+    burn = "/quiet /norestart";
     exe = manifest.InstallerSwitches.Silent;
   };
   # Use supplied silent flags or default to predefined ones
@@ -92,6 +96,7 @@ mkWindowsPackage {
     overlayDependencies
     extraPathsToRemove
     launchVncServer
+    wineserverWaitTimeout
     runtimeEnvVars
     ;
 }
