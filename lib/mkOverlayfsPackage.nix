@@ -482,6 +482,29 @@ stdenv.mkDerivation {
             cp -f "$nix_overlayfs_registry_signature_next" "$nix_overlayfs_registry_signature"
           fi
 
+          nix_overlayfs_prepare_upperdir_skeleton() {
+            local lowerdir=""
+            local lower_drive_c=""
+            local source_dir=""
+            local relative_dir=""
+            local -a nix_overlayfs_lowerdirs=()
+
+            IFS=: read -r -a nix_overlayfs_lowerdirs <<< "$lowerdirs"
+            for lowerdir in "''${nix_overlayfs_lowerdirs[@]}"; do
+              lower_drive_c="$lowerdir/drive_c"
+              [ -d "$lower_drive_c" ] || continue
+
+              while IFS= read -r -d "" source_dir; do
+                relative_dir="''${source_dir#"$lowerdir"/}"
+                [ "$relative_dir" != "$source_dir" ] || continue
+                mkdir -p "$appdir/$relative_dir"
+                chmod a+rwx "$appdir/$relative_dir" || true
+              done < <(${pkgs.findutils}/bin/find "$lower_drive_c" -maxdepth 5 -type d -print0)
+            done
+          }
+
+          nix_overlayfs_prepare_upperdir_skeleton
+
           rm -rf "$overlay_workdir"
           mkdir -p "$overlay_workdir"
           rm -f \
