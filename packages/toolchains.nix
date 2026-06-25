@@ -73,9 +73,7 @@ let
 
   nativeArm64ecWine =
     if isAarch64 then
-      pkgs.callPackage ./custom/wine-arm64ec.nix {
-        inherit llvmMingwArm64ec versions;
-      }
+      pkgs.wineWow64Packages.unstableFull
     else
       null;
 
