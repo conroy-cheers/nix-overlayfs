@@ -263,6 +263,7 @@ stdenv.mkDerivation {
             XDG_CACHE_HOME="$HOME/.cache"
         fi
 
+        export XDG_DATA_HOME XDG_CACHE_HOME
         export appdir="$XDG_DATA_HOME/${basePackageName}"
         export originalUser="$USER"
         export tmpbase="$XDG_CACHE_HOME/nix-overlayfs/tmp"

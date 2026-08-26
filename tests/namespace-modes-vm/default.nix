@@ -78,6 +78,8 @@ else
       direct_result, direct_namespace = run_mode("direct")
       assert "direct=1" in direct_result
       assert direct_namespace == init_namespace
+      machine.succeed("test -d /home/alice/.local/share/applications")
+      machine.succeed("! grep -F '/applications' /tmp/required.log /tmp/auto.log /tmp/direct.log")
 
       machine.fail(
           "su - alice -c 'NIX_OVERLAYFS_NAMESPACE_MODE=invalid "
