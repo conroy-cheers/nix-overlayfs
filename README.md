@@ -60,6 +60,22 @@ fragment that leaves host graphics discovery untouched by default and supports
 an explicit `NIX_OVERLAYFS_GRAPHICS_STACK=system` override for hosts that
 surface their GL/EGL/Vulkan stack via `/run/opengl-driver`.
 
+## Runtime namespace modes
+
+Runtime wrappers default to `namespaceMode = "auto"`. They use isolated user
+and mount namespaces when the required `unshare` operation succeeds. If the
+host denies unprivileged user namespaces, as Ubuntu 24.04 does by default, the
+wrapper falls back to a direct rootless `fuse-overlayfs` mount and prints a
+warning explaining why.
+
+Callers can set `namespaceMode` to `"required"` to reject that fallback or to
+`"direct"` to avoid the namespace probe. Users can override the packaged mode
+at runtime with `NIX_OVERLAYFS_NAMESPACE_MODE=auto|required|direct`.
+
+Direct mode keeps its mount under the user's private nix-overlayfs temporary
+directory and performs the normal explicit FUSE unmount and temporary-directory
+cleanup. It does not disable host AppArmor or user-namespace policy.
+
 ## Migrating from `composeWineLayers`
 
 The old `composeWineLayers` entrypoint has been replaced by

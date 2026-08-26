@@ -185,7 +185,7 @@ else
       machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; update-desktop-database $XDG_DATA_HOME/applications; xdg-mime default nix-overlayfs-vm-browser.desktop x-scheme-handler/http; xdg-mime default nix-overlayfs-vm-browser.desktop x-scheme-handler/https'")
 
       machine.succeed("rm -f /tmp/nix-overlayfs-return-url /tmp/nix-overlayfs-cold-started /tmp/nix-overlayfs-cold-start.log /tmp/nix-overlayfs-cold-session.pid /tmp/nix-overlayfs-cold-overlay-root")
-      machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache; nohup ${probePackage}/bin/url-broker-vm --nix-overlayfs-open-url probe://cold-start?state=initial > /tmp/nix-overlayfs-cold-start.log 2>&1 &'")
+      machine.succeed("su - alice -c 'export XDG_DATA_HOME=$HOME/.local/share XDG_CONFIG_HOME=$HOME/.config XDG_CACHE_HOME=$HOME/.cache NIX_OVERLAYFS_NAMESPACE_MODE=direct; nohup ${probePackage}/bin/url-broker-vm --nix-overlayfs-open-url probe://cold-start?state=initial > /tmp/nix-overlayfs-cold-start.log 2>&1 &'")
       machine.succeed(
           "timeout 60 bash -c 'until [ -e /tmp/nix-overlayfs-cold-started ]; do sleep 0.25; done' || "
           "{ echo COLD_START_LOG; cat /tmp/nix-overlayfs-cold-start.log || true; "
