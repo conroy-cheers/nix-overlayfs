@@ -57,13 +57,7 @@
     export LD_LIBRARY_PATH="''${nix_overlayfs_graphics_lib:+$nix_overlayfs_graphics_lib:}''${nix_overlayfs_wine_rpath:+$nix_overlayfs_wine_rpath:}''${LD_LIBRARY_PATH:-}"
     export LD_LIBRARY_PATH="''${LD_LIBRARY_PATH%:}"
 
-    if [ "$nix_overlayfs_graphics_stack" = auto ]; then
-      unset __EGL_VENDOR_LIBRARY_FILENAMES
-      unset LIBGL_DRIVERS_PATH
-      unset GBM_BACKENDS_PATH
-      unset VK_DRIVER_FILES
-      unset VK_LAYER_PATH
-    else
+    if [ "$nix_overlayfs_graphics_stack" = system ]; then
       nix_overlayfs_egl_vendor_files="$(nix_overlayfs_join_colon_paths "$nix_overlayfs_driver_root"/share/glvnd/egl_vendor.d/*.json)"
       if [ -n "$nix_overlayfs_egl_vendor_files" ]; then
         export __EGL_VENDOR_LIBRARY_FILENAMES="$nix_overlayfs_egl_vendor_files"
