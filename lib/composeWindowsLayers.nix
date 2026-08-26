@@ -16,6 +16,7 @@
   workingDirectory ? null,
   extraPreLaunchCommands ? "",
   extraPostLaunchCommands ? "",
+  namespaceMode ? "auto",
   runtimeEnvVars ? { },
   urlSchemes ? [ ],
   urlSchemeDiscoveryCommands ? "",
@@ -75,6 +76,7 @@ mkOverlayfsPackage {
     executablePath
     workingDirectory
     entrypointWrapper
+    namespaceMode
     session
     urlSchemes
     urlSchemeDiscoveryCommands

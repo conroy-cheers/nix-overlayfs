@@ -17,6 +17,7 @@
   launchProgram ? "",
   session ? null,
   basePackageName ? basePackage.pname,
+  namespaceMode ? "auto",
   urlSchemes ? [ ],
   urlSchemeDiscoveryCommands ? "",
   urlSchemeRegistryCommands ? "",
@@ -28,11 +29,23 @@ let
   lib = pkgs.lib;
   _checkUrlSchemes =
     if builtins.isList urlSchemes then true else throw "urlSchemes must be a list of URI scheme names";
+  _checkNamespaceMode =
+    if
+      builtins.elem namespaceMode [
+        "auto"
+        "required"
+        "direct"
+      ]
+    then
+      true
+    else
+      throw "namespaceMode must be one of: auto, required, direct";
   explicitUrlSchemeCommands = lib.concatMapStringsSep "\n" (
     scheme: "printf '%s\\n' ${lib.escapeShellArg scheme}"
   ) urlSchemes;
 in
 assert _checkUrlSchemes;
+assert _checkNamespaceMode;
 stdenv.mkDerivation {
   pname = basePackage.pname + "-overlay";
   version = basePackage.version;
@@ -215,15 +228,25 @@ stdenv.mkDerivation {
                   }
       '';
       activeUrlSchemeOpenInvocation = "nix_overlayfs_enqueue_url_request";
-      urlSchemeOpenInvocation =
+      urlSchemeCommand =
         if urlSchemeOpenCommands != "" then
-          ''${pkgs.util-linux}/bin/unshare --map-user="$originalUser" ${
-            if workingDirectory != null then "--wd \"$tempdir/overlay/${workingDirectory}\"" else ""
-          } env HOME="$HOME" WINEPREFIX="$tempdir/overlay" WINEARCH="$WINEARCH" WINEDEBUG="$WINEDEBUG" callback_url="$callback_url" active_overlay="$tempdir/overlay" tempdir="$tempdir" ${pkgs.bash}/bin/bash -c ${lib.escapeShellArg urlSchemeOpenCommands}''
+          ''env HOME="$HOME" WINEPREFIX="$tempdir/overlay" WINEARCH="$WINEARCH" WINEDEBUG="$WINEDEBUG" callback_url="$callback_url" active_overlay="$tempdir/overlay" tempdir="$tempdir" ${pkgs.bash}/bin/bash -c ${lib.escapeShellArg urlSchemeOpenCommands}''
         else
-          ''${pkgs.util-linux}/bin/unshare --map-user="$originalUser" ${
+          ''env HOME="$HOME" WINEPREFIX="$tempdir/overlay" WINEARCH="$WINEARCH" WINEDEBUG="$WINEDEBUG" ${launchProgram} "$tempdir/overlay/${executablePath}" "$callback_url"'';
+      urlSchemeOpenInvocation = ''
+        if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ]; then
+          (
+            ${
+              lib.optionalString (workingDirectory != null) ''cd "$tempdir/overlay/${workingDirectory}" || exit''
+            }
+            ${urlSchemeCommand}
+          )
+        else
+          ${pkgs.util-linux}/bin/unshare --map-user="$originalUser" ${
             if workingDirectory != null then "--wd \"$tempdir/overlay/${workingDirectory}\"" else ""
-          } env HOME="$HOME" WINEPREFIX="$tempdir/overlay" WINEARCH="$WINEARCH" WINEDEBUG="$WINEDEBUG" ${launchProgram} "$tempdir/overlay/${executablePath}" "$callback_url"'';
+          } ${urlSchemeCommand}
+        fi
+      '';
       # the script which serves as a stand-in for the executable specified by 'executablePath' and named as 'executableName'
       entryScript = pkgs.writeShellScript "runApp" ''
 
@@ -419,8 +442,38 @@ stdenv.mkDerivation {
         nix_overlayfs_start_host_browser_broker
         trap nix_overlayfs_entry_cleanup EXIT
 
-        # Creating the mount namespace and launching the environment script
-        ${pkgs.util-linux}/bin/unshare --map-root-user --mount "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
+        namespace_mode="''${NIX_OVERLAYFS_NAMESPACE_MODE:-${namespaceMode}}"
+        case "$namespace_mode" in
+          auto|required|direct)
+            ;;
+          *)
+            echo "error: NIX_OVERLAYFS_NAMESPACE_MODE must be one of: auto, required, direct" >&2
+            exit 2
+            ;;
+        esac
+
+        if [ "$namespace_mode" = auto ]; then
+          namespace_probe_log="$tempdir/unshare-probe.log"
+          if ${pkgs.util-linux}/bin/unshare --map-root-user --mount true 2>"$namespace_probe_log"; then
+            namespace_mode=required
+          elif grep -Eq '(uid_map|gid_map).*(Operation not permitted|Permission denied)|(unshare failed:|cannot create user namespace:).*(Operation not permitted|Permission denied)' "$namespace_probe_log"; then
+            echo "warning: nix-overlayfs: user/mount namespaces are unavailable; using direct FUSE mode" >&2
+            sed 's/^/warning: nix-overlayfs: unshare: /' "$namespace_probe_log" >&2
+            namespace_mode=direct
+          else
+            echo "error: nix-overlayfs: namespace capability probe failed unexpectedly" >&2
+            cat "$namespace_probe_log" >&2
+            exit 1
+          fi
+        fi
+
+        if [ "$namespace_mode" = direct ]; then
+          export NIX_OVERLAYFS_DIRECT_MODE=1
+          "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
+        else
+          unset NIX_OVERLAYFS_DIRECT_MODE
+          ${pkgs.util-linux}/bin/unshare --map-root-user --mount "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
+        fi
         launch_status=$?
         exit "$launch_status"
       '';
@@ -525,7 +578,8 @@ stdenv.mkDerivation {
           ${if session == null then "" else renderEnvExports session.env}
 
           nix_overlayfs_hide_ld_so_preload() {
-            if [ "''${NIX_OVERLAYFS_PRESERVE_LD_SO_PRELOAD:-0}" = 1 ] \
+            if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ] \
+              || [ "''${NIX_OVERLAYFS_PRESERVE_LD_SO_PRELOAD:-0}" = 1 ] \
               || [ ! -f /etc/ld.so.preload ]; then
               return 0
             fi
@@ -688,10 +742,21 @@ EOF
               launch_wd_args=(--wd "$launch_working_directory")
             fi
 
-            ${pkgs.util-linux}/bin/unshare \
-              --map-user="$originalUser" \
-              "''${launch_wd_args[@]}" \
-              ${launchProgram} "$executable" "$@" &
+            if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ]; then
+              if [ -n "$launch_working_directory" ]; then
+                (
+                  cd "$launch_working_directory"
+                  ${launchProgram} "$executable" "$@"
+                ) &
+              else
+                ${launchProgram} "$executable" "$@" &
+              fi
+            else
+              ${pkgs.util-linux}/bin/unshare \
+                --map-user="$originalUser" \
+                "''${launch_wd_args[@]}" \
+                ${launchProgram} "$executable" "$@" &
+            fi
 
             launch_pid=$!
           }
@@ -821,6 +886,7 @@ EOF
       executablePath
       overlayDependencies
       launchProgram
+      namespaceMode
       ;
   };
 }
