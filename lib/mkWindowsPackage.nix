@@ -18,6 +18,7 @@
   moreutils,
   x11vnc,
   coreutils,
+  rsync,
 
   overlayfsLib,
 }:
@@ -40,6 +41,7 @@
   postInstall ? "",
   launchVncServer ? false,
   unshareInstall ? null,
+  buildNamespaceMode ? "auto",
   wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
   urlSchemes ? [ ],
@@ -50,6 +52,17 @@
 }:
 let
   scripts = overlayfsLib.scripts;
+  _checkBuildNamespaceMode =
+    if
+      builtins.elem buildNamespaceMode [
+        "auto"
+        "required"
+        "direct"
+      ]
+    then
+      true
+    else
+      throw "buildNamespaceMode must be one of: auto, required, direct";
   winedbg = "-all";
   packageVersion = version;
   pathsToRemove = builtins.concatStringsSep " " (
@@ -208,6 +221,35 @@ EOF
 
         exit $INSTALL_STATUS
       '';
+
+      buildPhaseDirectScript = writeShellScript "buildDirect" ''
+        xvfb_pid=""
+
+        cleanup_direct_build() {
+          status=$?
+          trap - EXIT
+          if [ -n "$xvfb_pid" ]; then
+            kill "$xvfb_pid" 2>/dev/null || true
+          fi
+          exit "$status"
+        }
+        trap cleanup_direct_build EXIT
+
+        cp -a "$PWD/wineprefix/." "$PWD/merged/"
+
+        export USER="$originalUser"
+        Xvfb :999 -screen 0 1600x900x16 &
+        xvfb_pid=$!
+        export DISPLAY=:999
+
+        "${buildPhaseUnshareScript}"
+        install_status=$?
+        if [ "$install_status" -ne 0 ]; then
+          exit "$install_status"
+        fi
+
+        rsync -a --checksum --compare-dest="$PWD/wineprefix/" "$PWD/merged/" "$PWD/data/"
+      '';
     in
     stdenv.mkDerivation {
       inherit pname src;
@@ -226,6 +268,7 @@ EOF
         scripts.reg2json
         gnused
         moreutils
+        rsync
       ]
       ++ buildSession.buildInputs;
 
@@ -264,7 +307,21 @@ EOF
           export temp=$(mktemp -d)
           export originalUser=$(id --user --name)
 
-          unshare --fork --map-root-user --mount bash -c -- '${buildPhaseEnvScript}'
+          namespace_mode=${lib.escapeShellArg buildNamespaceMode}
+          if [ "$namespace_mode" = auto ]; then
+            if unshare --map-root-user --mount true 2>/dev/null; then
+              namespace_mode=required
+            else
+              echo "warning: nix-overlayfs: build user/mount namespaces are unavailable; using materialized build mode" >&2
+              namespace_mode=direct
+            fi
+          fi
+
+          if [ "$namespace_mode" = direct ]; then
+            "${buildPhaseDirectScript}"
+          else
+            unshare --fork --map-root-user --mount bash -c -- '${buildPhaseEnvScript}'
+          fi
 
           rm --force ./data/.update-timestamp
           mkdir --parents ./data/bin
@@ -323,10 +380,16 @@ EOF
       '';
 
       passthru = {
-        inherit buildPhaseUnshareScript buildPhaseEnvScript runtime;
+        inherit
+          buildPhaseUnshareScript
+          buildPhaseEnvScript
+          buildPhaseDirectScript
+          runtime
+          ;
       };
     };
 in
+assert _checkBuildNamespaceMode;
 mkOverlayfsPackage {
   inherit
     basePackage

@@ -76,6 +76,17 @@ Direct mode keeps its mount under the user's private nix-overlayfs temporary
 directory and performs the normal explicit FUSE unmount and temporary-directory
 cleanup. It does not disable host AppArmor or user-namespace policy.
 
+## Build namespace modes
+
+`mkWindowsPackage` defaults to `buildNamespaceMode = "auto"`. It uses the
+kernel overlay build when user and mount namespaces are available. Otherwise,
+it materializes the prepared prefix, runs the installer as the normal Nix build
+user, and uses `rsync --compare-dest` to retain the resulting layer delta. This
+supports Ubuntu's default AppArmor policy without changing host configuration.
+
+Package definitions can select `"required"` to require the namespace build or
+`"direct"` to always use the materialized build.
+
 ## Migrating from `composeWineLayers`
 
 The old `composeWineLayers` entrypoint has been replaced by
