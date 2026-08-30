@@ -42,6 +42,10 @@
   launchVncServer ? false,
   unshareInstall ? null,
   buildNamespaceMode ? "auto",
+  hostIntegration ? true,
+  managedRuntime ? "auto",
+  namespaceMode ? "auto",
+  stateMode ? "persistent",
   wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
   urlSchemes ? [ ],
@@ -63,6 +67,16 @@ let
       true
     else
       throw "buildNamespaceMode must be one of: auto, required, direct";
+  _checkManagedRuntime =
+    if
+      builtins.elem managedRuntime [
+        "auto"
+        "disabled"
+      ]
+    then
+      true
+    else
+      throw "managedRuntime must be one of: auto, disabled";
   winedbg = "-all";
   packageVersion = version;
   pathsToRemove = builtins.concatStringsSep " " (
@@ -70,10 +84,20 @@ let
   );
   renderEnvExports =
     env: builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}=${v}") env);
+  managedRuntimeCommands = lib.optionalString (managedRuntime == "disabled") ''
+    export WINEDLLOVERRIDES="mscoree,mshtml=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+  '';
 
   ahkScriptPresent = ahkScript != "";
 
-  baseEnv = [ runtime.baseEnvLayer ];
+  baseEnvLayer =
+    if runtime ? selectBaseEnvLayer then
+      runtime.selectBaseEnvLayer { inherit hostIntegration managedRuntime; }
+    else if hostIntegration && managedRuntime == "auto" then
+      runtime.baseEnvLayer
+    else
+      throw "the selected runtime does not provide capability-specific base environment layers";
+  baseEnv = [ baseEnvLayer ];
   overlayDependenciesPlusUtils =
     (lib.optionals ahkScriptPresent [
       runtime.autohotkeyLayer
@@ -86,37 +110,37 @@ let
     overlayRoot = "$tempdir/overlay";
     homeDir = "$HOME";
   };
-  hostBrowserBootstrapCommands = ''
-    nix_overlayfs_upsert_user_reg_section 'Software\\Wine\\WineBrowser' <<EOF
-"Browsers"=$(nix_overlayfs_registry_string '${lib.getExe overlayfsLib.hostUrlOpener}')
-EOF
+  hostBrowserBootstrapCommands = lib.optionalString hostIntegration ''
+        nix_overlayfs_upsert_user_reg_section 'Software\\Wine\\WineBrowser' <<EOF
+    "Browsers"=$(nix_overlayfs_registry_string '${lib.getExe overlayfsLib.hostUrlOpener}')
+    EOF
   '';
-  protocolRegistrationCommands = ''
-    if [ -s "$nix_overlayfs_url_schemes_file" ]; then
-      nix_overlayfs_protocol_executable=${lib.escapeShellArg executablePath}
-      case "$nix_overlayfs_protocol_executable" in
-        /drive_c/*)
-          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#/drive_c/}"
-          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
-          ;;
-        drive_c/*)
-          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#drive_c/}"
-          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
-          ;;
-        *)
-          nix_overlayfs_protocol_executable="$(${runtime.toolsPackage}/bin/winepath -w "$tempdir/overlay/${executablePath}")"
-          ;;
-      esac
-      while IFS= read -r nix_overlayfs_url_scheme; do
-        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme" <<EOF
-@=$(nix_overlayfs_registry_string "URL:$nix_overlayfs_url_scheme Protocol")
-"URL Protocol"=""
-EOF
-        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme"'\\shell\\open\\command' <<EOF
-@=$(nix_overlayfs_registry_string "\"$nix_overlayfs_protocol_executable\" \"%1\"")
-EOF
-      done < "$nix_overlayfs_url_schemes_file"
-    fi
+  protocolRegistrationCommands = lib.optionalString hostIntegration ''
+        if [ -s "$nix_overlayfs_url_schemes_file" ]; then
+          nix_overlayfs_protocol_executable=${lib.escapeShellArg executablePath}
+          case "$nix_overlayfs_protocol_executable" in
+            /drive_c/*)
+              nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#/drive_c/}"
+              nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+              ;;
+            drive_c/*)
+              nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#drive_c/}"
+              nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+              ;;
+            *)
+              nix_overlayfs_protocol_executable="$(${runtime.toolsPackage}/bin/winepath -w "$tempdir/overlay/${executablePath}")"
+              ;;
+          esac
+          while IFS= read -r nix_overlayfs_url_scheme; do
+            nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme" <<EOF
+    @=$(nix_overlayfs_registry_string "URL:$nix_overlayfs_url_scheme Protocol")
+    "URL Protocol"=""
+    EOF
+            nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme"'\\shell\\open\\command' <<EOF
+    @=$(nix_overlayfs_registry_string "\"$nix_overlayfs_protocol_executable\" \"%1\"")
+    EOF
+          done < "$nix_overlayfs_url_schemes_file"
+        fi
   '';
 
   deps = builtins.map (x: "\"" + x + "\"") overlayDependenciesPlusEnv;
@@ -176,6 +200,7 @@ EOF
               trap cleanup_runtime_session EXIT
 
               ${renderEnvExports buildSession.env}
+              ${managedRuntimeCommands}
               ${buildSession.preCommands}
             ''
           ]
@@ -390,11 +415,15 @@ EOF
     };
 in
 assert _checkBuildNamespaceMode;
+assert _checkManagedRuntime;
 mkOverlayfsPackage {
   inherit
     basePackage
     executableName
     executablePath
+    hostIntegration
+    namespaceMode
+    stateMode
     workingDirectory
     entrypointWrapper
     urlSchemes
@@ -411,8 +440,12 @@ mkOverlayfsPackage {
   extraEnvCommands = ''
     export WINEDEBUG="${winedbg}"
   ''
-  + builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}='${v}'") runtimeEnvVars);
+  + builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}='${v}'") runtimeEnvVars)
+  + lib.optionalString (managedRuntime == "disabled") ''
+
+    export WINEDLLOVERRIDES="mscoree,mshtml=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+  '';
   passthru = {
-    inherit runtime runtimeEnvVars;
+    inherit managedRuntime runtime runtimeEnvVars;
   };
 }

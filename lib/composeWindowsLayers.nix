@@ -16,7 +16,10 @@
   workingDirectory ? null,
   extraPreLaunchCommands ? "",
   extraPostLaunchCommands ? "",
+  hostIntegration ? true,
+  managedRuntime ? "auto",
   namespaceMode ? "auto",
+  stateMode ? "persistent",
   runtimeEnvVars ? { },
   urlSchemes ? [ ],
   urlSchemeDiscoveryCommands ? "",
@@ -26,8 +29,35 @@
 }:
 
 let
+  _checkManagedRuntime =
+    if
+      builtins.elem managedRuntime [
+        "auto"
+        "disabled"
+      ]
+    then
+      true
+    else
+      throw "managedRuntime must be one of: auto, disabled";
+  _checkStateMode =
+    if
+      builtins.elem stateMode [
+        "persistent"
+        "ephemeral"
+      ]
+    then
+      true
+    else
+      throw "stateMode must be one of: persistent, ephemeral";
   winedbg = "-all";
-  baseEnv = [ runtime.baseEnvLayer ];
+  baseEnvLayer =
+    if runtime ? selectBaseEnvLayer then
+      runtime.selectBaseEnvLayer { inherit hostIntegration managedRuntime; }
+    else if hostIntegration && managedRuntime == "auto" then
+      runtime.baseEnvLayer
+    else
+      throw "the selected runtime does not provide capability-specific base environment layers";
+  baseEnv = [ baseEnvLayer ];
   allLayers = [ baseLayer ] ++ overlayDependencies;
   allRuntimeEnvVars = lib.mergeAttrsList (
     (builtins.map (layer: layer.runtimeEnvVars) allLayers) ++ [ runtimeEnvVars ]
@@ -38,37 +68,39 @@ let
     overlayRoot = "$tempdir/overlay";
     homeDir = "$HOME";
   };
-  hostBrowserBootstrapCommands = ''
+  hostBrowserBootstrapCommands = lib.optionalString hostIntegration ''
     nix_overlayfs_configure_host_browser || true
   '';
-  protocolRegistrationCommands = ''
-    if [ -s "$nix_overlayfs_url_schemes_file" ]; then
-      nix_overlayfs_protocol_executable=${lib.escapeShellArg executablePath}
-      case "$nix_overlayfs_protocol_executable" in
-        /drive_c/*)
-          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#/drive_c/}"
-          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
-          ;;
-        drive_c/*)
-          nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#drive_c/}"
-          nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
-          ;;
-        *)
-          nix_overlayfs_protocol_executable="$(${runtime.toolsPackage}/bin/winepath -w "$tempdir/overlay/${executablePath}")"
-          ;;
-      esac
-      while IFS= read -r nix_overlayfs_url_scheme; do
-        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme" <<EOF
-@=$(nix_overlayfs_registry_string "URL:$nix_overlayfs_url_scheme Protocol")
-"URL Protocol"=""
-EOF
-        nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme"'\\shell\\open\\command' <<EOF
-@=$(nix_overlayfs_registry_string "\"$nix_overlayfs_protocol_executable\" \"%1\"")
-EOF
-      done < "$nix_overlayfs_url_schemes_file"
-    fi
+  protocolRegistrationCommands = lib.optionalString hostIntegration ''
+        if [ -s "$nix_overlayfs_url_schemes_file" ]; then
+          nix_overlayfs_protocol_executable=${lib.escapeShellArg executablePath}
+          case "$nix_overlayfs_protocol_executable" in
+            /drive_c/*)
+              nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#/drive_c/}"
+              nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+              ;;
+            drive_c/*)
+              nix_overlayfs_protocol_executable="C:\\''${nix_overlayfs_protocol_executable#drive_c/}"
+              nix_overlayfs_protocol_executable="''${nix_overlayfs_protocol_executable//\//\\}"
+              ;;
+            *)
+              nix_overlayfs_protocol_executable="$(${runtime.toolsPackage}/bin/winepath -w "$tempdir/overlay/${executablePath}")"
+              ;;
+          esac
+          while IFS= read -r nix_overlayfs_url_scheme; do
+            nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme" <<EOF
+    @=$(nix_overlayfs_registry_string "URL:$nix_overlayfs_url_scheme Protocol")
+    "URL Protocol"=""
+    EOF
+            nix_overlayfs_upsert_user_reg_section 'Software\\Classes\\'"$nix_overlayfs_url_scheme"'\\shell\\open\\command' <<EOF
+    @=$(nix_overlayfs_registry_string "\"$nix_overlayfs_protocol_executable\" \"%1\"")
+    EOF
+          done < "$nix_overlayfs_url_schemes_file"
+        fi
   '';
 in
+assert _checkManagedRuntime;
+assert _checkStateMode;
 mkOverlayfsPackage {
   inherit (baseLayer) basePackage;
   inherit
@@ -76,8 +108,10 @@ mkOverlayfsPackage {
     executablePath
     workingDirectory
     entrypointWrapper
+    hostIntegration
     namespaceMode
     session
+    stateMode
     urlSchemes
     urlSchemeDiscoveryCommands
     urlSchemeOpenCommands
@@ -91,7 +125,9 @@ mkOverlayfsPackage {
   extraEnvCommands = ''
     export WINEDEBUG="''${WINEDEBUG:-${winedbg}}"
   ''
-  + builtins.concatStringsSep "\n" (
-    lib.mapAttrsToList (n: v: "export ${n}='${v}'") allRuntimeEnvVars
-  );
+  + builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}='${v}'") allRuntimeEnvVars)
+  + lib.optionalString (managedRuntime == "disabled") ''
+
+    export WINEDLLOVERRIDES="mscoree,mshtml=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+  '';
 }

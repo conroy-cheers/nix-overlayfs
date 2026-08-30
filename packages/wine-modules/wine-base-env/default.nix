@@ -14,8 +14,21 @@
   jd-diff-patch,
 
   overlayfsLib,
+
+  hostIntegration ? true,
+  managedRuntime ? "auto",
 }:
 let
+  _checkManagedRuntime =
+    if
+      builtins.elem managedRuntime [
+        "auto"
+        "disabled"
+      ]
+    then
+      true
+    else
+      throw "managedRuntime must be one of: auto, disabled";
   session = runtime.mkSession {
     phase = "build";
     sessionRoot = "$PWD/runtime-session";
@@ -82,6 +95,7 @@ let
       "11.8" = "11.1.0";
       "11.3" = "11.0.0";
       "11.1" = "11.0.0";
+      "11.0" = "11.0.0";
       "10.19" = "10.3.0";
       "10.18" = "10.3.0";
       "10.17" = "10.3.0";
@@ -134,6 +148,10 @@ let
     export WINEDLLOVERRIDES="winebth.sys=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
   '';
 
+  managedRuntimeCommands = lib.optionalString (managedRuntime == "disabled") ''
+    export WINEDLLOVERRIDES="mscoree,mshtml=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+  '';
+
   wineMonoPatchCommands = lib.optionalString (wineMonoVersion == "11.1.0") ''
     # wine-mono 11.1.0's MSI link custom actions fail under the Nix build
     # sandbox with Wine 11.8. The payload and support MSI still install
@@ -142,18 +160,21 @@ let
     msibuild ./mono.msi -q "DELETE FROM InstallExecuteSequence WHERE Action = 'CREATELINKS64'"
   '';
 
-  wineBrowserCommands = ''
+  wineBrowserCommands = lib.optionalString hostIntegration ''
     ${coreutils}/bin/timeout --foreground 30s ${session.commands.wine} reg add 'HKCU\Software\Wine\WineBrowser' /v Browsers /t REG_SZ /d '${overlayfsLib.hostUrlOpener}/bin/nix-overlayfs-open-url' /f
     ${coreutils}/bin/timeout --foreground 30s ${session.commands.wineserver} --wait || true
   '';
 
   wine-mono =
-    if (wineMonoVersion != null) then (fetchurl wineMonoDownloads.${wineMonoVersion}) else null;
+    if (managedRuntime == "auto" && wineMonoVersion != null) then
+      (fetchurl wineMonoDownloads.${wineMonoVersion})
+    else
+      null;
 
   bootstrapCommands =
     prefixWorkaroundCommands
-    +
-    (lib.optionalString needFramebuffer ''
+    + managedRuntimeCommands
+    + (lib.optionalString needFramebuffer ''
       # run virtual framebuffer
       Xvfb :999 -screen 0 1600x900x16 &
       XVFB_PROC_ID=$!
@@ -173,10 +194,10 @@ let
       ${session.commands.wineserver} --wait
       echo "wineprefix initialised."
     '')
-    + ''
+    + (lib.optionalString hostIntegration ''
       echo "Configuring WineBrowser host URL opener..."
       ${wineBrowserCommands}
-    ''
+    '')
     + (lib.optionalString (prefixInitCommands != "") ''
       ${prefixInitCommands}
     '')
@@ -185,6 +206,7 @@ let
       kill $XVFB_PROC_ID
     '');
 in
+assert _checkManagedRuntime;
 stdenv.mkDerivation {
   pname = "base-env";
   version = "0.0.1";
@@ -205,30 +227,32 @@ stdenv.mkDerivation {
   unpackPhase = "true";
 
   buildPhase =
-    (lib.optionalString (wine-mono != null) ''
-      cp $src ./mono.msi
-      ${wineMonoPatchCommands}
-    ''
-    + ''
-      mkdir prefix home cache
-      ${builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}=${v}") session.env)}
-      ${session.preCommands}
-      export HOME=$(realpath ./home)
-      export XDG_CACHE_HOME=$(realpath ./cache)
-      export WINEPREFIX=$PWD/prefix
+    (
+      lib.optionalString (wine-mono != null) ''
+        cp $src ./mono.msi
+        ${wineMonoPatchCommands}
+      ''
+      + ''
+        mkdir prefix home cache
+        ${builtins.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${n}=${v}") session.env)}
+        ${session.preCommands}
+        export HOME=$(realpath ./home)
+        export XDG_CACHE_HOME=$(realpath ./cache)
+        export WINEPREFIX=$PWD/prefix
 
-      echo "printing env..."
-      env
-      cat > ./bootstrap-prefix.sh <<'EOF'
-      #!${stdenv.shell}
-      set -euo pipefail
+        echo "printing env..."
+        env
+        cat > ./bootstrap-prefix.sh <<'EOF'
+        #!${stdenv.shell}
+        set -euo pipefail
 
-      ${bootstrapCommands}
-      EOF
-      chmod +x ./bootstrap-prefix.sh
+        ${bootstrapCommands}
+        EOF
+        chmod +x ./bootstrap-prefix.sh
 
-      ./bootstrap-prefix.sh
-    '')
+        ./bootstrap-prefix.sh
+      ''
+    )
     + ''
       ${session.postCommands}
 
@@ -265,6 +289,11 @@ stdenv.mkDerivation {
   meta.executableName = "";
 
   passthru = {
-    inherit runtime wine-mono;
+    inherit
+      runtime
+      wine-mono
+      hostIntegration
+      managedRuntime
+      ;
   };
 }

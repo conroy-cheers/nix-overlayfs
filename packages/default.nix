@@ -24,6 +24,7 @@ let
 in
 lib.optionalAttrs (!isAarch64) {
   inherit (runtimeCatalog)
+    nativeWin32HeadlessModules
     nativeWin32Modules
     nativeWow64Modules
     geWin32Modules

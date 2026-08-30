@@ -76,6 +76,33 @@ Direct mode keeps its mount under the user's private nix-overlayfs temporary
 directory and performs the normal explicit FUSE unmount and temporary-directory
 cleanup. It does not disable host AppArmor or user-namespace policy.
 
+## Headless and ephemeral runtimes
+
+`composeWindowsLayers` can produce a one-shot, non-interactive runtime for CLI
+programs:
+
+```nix
+overlayfsLib.composeWindowsLayers {
+  # ...runtime, base layer, and executable arguments...
+  hostIntegration = false;
+  managedRuntime = "disabled";
+  stateMode = "ephemeral";
+}
+```
+
+`hostIntegration = false` omits browser brokerage, URL/desktop registration,
+and the host `start.exe` shim. URL scheme options are rejected in this mode.
+`managedRuntime = "disabled"` uses a base environment without Wine Mono and
+disables Wine's `mscoree` and `mshtml` loaders, preventing interactive Mono or
+Gecko installation prompts. `stateMode = "ephemeral"` places the writable
+prefix, XDG data, and XDG cache below a per-invocation temporary directory and
+removes it after the command exits.
+
+On `x86_64-linux`, `moduleScopes.nativeWin32HeadlessModules` pairs these options
+with the lean `winePackages.stable` Win32 runtime. Desktop applications should
+continue using `nativeWin32Modules`, whose existing persistent and integrated
+behavior remains the default.
+
 ## Build namespace modes
 
 `mkWindowsPackage` defaults to `buildNamespaceMode = "auto"`. It uses the

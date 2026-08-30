@@ -19,39 +19,43 @@ let
 
   withModules = runtime: makeModules runtime;
 
-  nativeWin32Modules =
-    lib.optionalAttrs (!isAarch64) {
-      runtime = nativeRuntime {
-        wine = pkgs.winePackages.stableFull;
-        windowsArch = "win32";
-      };
+  nativeWin32Modules = lib.optionalAttrs (!isAarch64) {
+    runtime = nativeRuntime {
+      wine = pkgs.winePackages.stableFull;
+      windowsArch = "win32";
     };
+  };
 
-  nativeWow64Modules =
-    lib.optionalAttrs (!isAarch64) {
-      runtime = nativeRuntime {
-        wine = pkgs.wineWow64Packages.unstableFull;
-        windowsArch = "wow64";
-      };
+  nativeWin32HeadlessModules = lib.optionalAttrs (!isAarch64) {
+    runtime = nativeRuntime {
+      wine = pkgs.winePackages.stable;
+      windowsArch = "win32";
+      id = "native-win32-headless";
     };
+  };
 
-  geWin32Modules =
-    lib.optionalAttrs (!isAarch64) {
-      runtime = nativeRuntime {
-        wine = nix-gaming-legacy.wine-ge;
-        windowsArch = "win32";
-        id = "ge-win32";
-      };
+  nativeWow64Modules = lib.optionalAttrs (!isAarch64) {
+    runtime = nativeRuntime {
+      wine = pkgs.wineWow64Packages.unstableFull;
+      windowsArch = "wow64";
     };
+  };
 
-  tkgWow64Modules =
-    lib.optionalAttrs (!isAarch64) {
-      runtime = nativeRuntime {
-        wine = nix-gaming.wine-tkg;
-        windowsArch = "wow64";
-        id = "tkg-wow64";
-      };
+  geWin32Modules = lib.optionalAttrs (!isAarch64) {
+    runtime = nativeRuntime {
+      wine = nix-gaming-legacy.wine-ge;
+      windowsArch = "win32";
+      id = "ge-win32";
     };
+  };
+
+  tkgWow64Modules = lib.optionalAttrs (!isAarch64) {
+    runtime = nativeRuntime {
+      wine = nix-gaming.wine-tkg;
+      windowsArch = "wow64";
+      id = "tkg-wow64";
+    };
+  };
 
   x64FexRuntime =
     if isAarch64 then
@@ -131,13 +135,11 @@ let
       null;
 
   nativeModules =
-    if isAarch64 then
-      withModules nativeArm64Runtime
-    else
-      withModules nativeWow64Modules.runtime;
+    if isAarch64 then withModules nativeArm64Runtime else withModules nativeWow64Modules.runtime;
 in
 lib.optionalAttrs (!isAarch64) {
   nativeWin32Modules = withModules nativeWin32Modules.runtime;
+  nativeWin32HeadlessModules = withModules nativeWin32HeadlessModules.runtime;
   nativeWow64Modules = withModules nativeWow64Modules.runtime;
   geWin32Modules = withModules geWin32Modules.runtime;
   tkgWow64Modules = withModules tkgWow64Modules.runtime;

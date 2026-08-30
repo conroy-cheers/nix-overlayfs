@@ -17,7 +17,9 @@
   launchProgram ? "",
   session ? null,
   basePackageName ? basePackage.pname,
+  hostIntegration ? true,
   namespaceMode ? "auto",
+  stateMode ? "persistent",
   urlSchemes ? [ ],
   urlSchemeDiscoveryCommands ? "",
   urlSchemeRegistryCommands ? "",
@@ -40,12 +42,37 @@ let
       true
     else
       throw "namespaceMode must be one of: auto, required, direct";
+  _checkStateMode =
+    if
+      builtins.elem stateMode [
+        "persistent"
+        "ephemeral"
+      ]
+    then
+      true
+    else
+      throw "stateMode must be one of: persistent, ephemeral";
+  _checkHostIntegration =
+    if
+      hostIntegration
+      || (
+        urlSchemes == [ ]
+        && urlSchemeDiscoveryCommands == ""
+        && urlSchemeRegistryCommands == ""
+        && urlSchemeOpenCommands == ""
+      )
+    then
+      true
+    else
+      throw "URL scheme integration requires hostIntegration = true";
   explicitUrlSchemeCommands = lib.concatMapStringsSep "\n" (
     scheme: "printf '%s\\n' ${lib.escapeShellArg scheme}"
   ) urlSchemes;
 in
 assert _checkUrlSchemes;
 assert _checkNamespaceMode;
+assert _checkStateMode;
+assert _checkHostIntegration;
 stdenv.mkDerivation {
   pname = basePackage.pname + "-overlay";
   version = basePackage.version;
@@ -55,7 +82,7 @@ stdenv.mkDerivation {
   buildPhase =
     let
       desktopId = "${executableName}-nix-overlayfs-url-handler.desktop";
-      urlSchemeRegistrationCommands = ''
+      urlSchemeRegistrationCommands = lib.optionalString hostIntegration ''
                   nix_overlayfs_discover_url_schemes() {
           {
             :
@@ -205,27 +232,29 @@ stdenv.mkDerivation {
                     return 1
                   }
 
-                  nix_overlayfs_overlay_process_exists() {
-                    local overlay_root="$1"
-                    local candidate=""
-                    local cmdline_file=""
-                    local cmdline=""
+      '';
+      overlayProcessCommands = ''
+        nix_overlayfs_overlay_process_exists() {
+          local overlay_root="$1"
+          local candidate=""
+          local cmdline_file=""
+          local cmdline=""
 
-                    for cmdline_file in /proc/[0-9]*/cmdline; do
-                      [ -r "$cmdline_file" ] || continue
-                      cmdline="$(tr '\0' ' ' < "$cmdline_file" 2>/dev/null || true)"
-                      for candidate in \
-                        "$overlay_root/${executablePath}" \
-                        "$overlay_root/${lib.removePrefix "/" executablePath}"
-                      do
-                        if [ -n "$cmdline" ] && [[ "$cmdline" == *"$candidate"* ]]; then
-                          return 0
-                        fi
-                      done
-                    done
+          for cmdline_file in /proc/[0-9]*/cmdline; do
+            [ -r "$cmdline_file" ] || continue
+            cmdline="$(tr '\0' ' ' < "$cmdline_file" 2>/dev/null || true)"
+            for candidate in \
+              "$overlay_root/${executablePath}" \
+              "$overlay_root/${lib.removePrefix "/" executablePath}"
+            do
+              if [ -n "$cmdline" ] && [[ "$cmdline" == *"$candidate"* ]]; then
+                return 0
+              fi
+            done
+          done
 
-                    return 1
-                  }
+          return 1
+        }
       '';
       activeUrlSchemeOpenInvocation = "nix_overlayfs_enqueue_url_request";
       urlSchemeCommand =
@@ -236,9 +265,9 @@ stdenv.mkDerivation {
       urlSchemeOpenInvocation = ''
         if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ]; then
           (
-            ${
-              lib.optionalString (workingDirectory != null) ''cd "$tempdir/overlay/${workingDirectory}" || exit''
-            }
+            ${lib.optionalString (
+              workingDirectory != null
+            ) ''cd "$tempdir/overlay/${workingDirectory}" || exit''}
             ${urlSchemeCommand}
           )
         else
@@ -255,33 +284,55 @@ stdenv.mkDerivation {
             exit 1
         fi
 
-        if [ -z ''${XDG_DATA_HOME+x} ]; then
-            XDG_DATA_HOME="$HOME/.local/share"
-        fi
+        export originalUser="''${USER:-$(${pkgs.coreutils}/bin/id -un)}"
+        ${
+          if stateMode == "ephemeral" then
+            ''
+              runtime_tmp_root="''${XDG_RUNTIME_DIR:-''${TMPDIR:-/tmp}}"
+              export tmpbase="$runtime_tmp_root/nix-overlayfs"
+              mkdir --parents "$tmpbase" || exit 1
+              chmod 700 "$tmpbase" || exit 1
 
-        if [ -z ''${XDG_CACHE_HOME+x} ]; then
-            XDG_CACHE_HOME="$HOME/.cache"
-        fi
+              export tempdir=$(mktemp -d -p "$tmpbase")
+              export TMPDIR="$tempdir/tmp"
+              export XDG_DATA_HOME="$tempdir/xdg-data"
+              export XDG_CACHE_HOME="$tempdir/xdg-cache"
+              export appdir="$tempdir/upper"
+              mkdir --parents \
+                "$TMPDIR" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$appdir" || exit 1
+            ''
+          else
+            ''
+              if [ -z ''${XDG_DATA_HOME+x} ]; then
+                  XDG_DATA_HOME="$HOME/.local/share"
+              fi
 
-        export XDG_DATA_HOME XDG_CACHE_HOME
-        export appdir="$XDG_DATA_HOME/${basePackageName}"
-        export originalUser="$USER"
-        export tmpbase="$XDG_CACHE_HOME/nix-overlayfs/tmp"
+              if [ -z ''${XDG_CACHE_HOME+x} ]; then
+                  XDG_CACHE_HOME="$HOME/.cache"
+              fi
 
-        mkdir --parents "$appdir" "$tmpbase" || exit 1
-        chmod 700 "$tmpbase" || exit 1
+              export XDG_DATA_HOME XDG_CACHE_HOME
+              export appdir="$XDG_DATA_HOME/${basePackageName}"
+              export tmpbase="$XDG_CACHE_HOME/nix-overlayfs/tmp"
 
-        export tempdir=$(mktemp -d -p "$tmpbase")
-        export TMPDIR="$tempdir/tmp"
-        mkdir --parents "$TMPDIR" || exit 1
+              mkdir --parents "$appdir" "$tmpbase" || exit 1
+              chmod 700 "$tmpbase" || exit 1
+
+              export tempdir=$(mktemp -d -p "$tmpbase")
+              export TMPDIR="$tempdir/tmp"
+              mkdir --parents "$TMPDIR" || exit 1
+            ''
+        }
 
         ${extraEnvCommands}
 
         state_dir="$appdir/.nix-overlayfs"
         host_browser_request_dir="$state_dir/host-browser-requests"
-        export NIX_OVERLAYFS_HOST_OPEN_DIR="$host_browser_request_dir"
-        nix_overlayfs_host_open_dir_win="Z:$host_browser_request_dir"
-        export NIX_OVERLAYFS_HOST_OPEN_DIR_WIN="''${nix_overlayfs_host_open_dir_win//\//\\}"
+        ${lib.optionalString hostIntegration ''
+          export NIX_OVERLAYFS_HOST_OPEN_DIR="$host_browser_request_dir"
+          nix_overlayfs_host_open_dir_win="Z:$host_browser_request_dir"
+          export NIX_OVERLAYFS_HOST_OPEN_DIR_WIN="''${nix_overlayfs_host_open_dir_win//\//\\}"
+        ''}
         nix_overlayfs_host_browser_broker_pid=""
 
         nix_overlayfs_load_session_env() {
@@ -351,7 +402,9 @@ stdenv.mkDerivation {
             rm -f "$processing_file"
             [ -n "$target_url" ] || continue
 
-            if ! ${lib.getExe overlayfsLib.hostUrlOpener} --direct "$target_url"; then
+            if ! ${
+              if hostIntegration then lib.getExe overlayfsLib.hostUrlOpener else "${pkgs.coreutils}/bin/false"
+            } --direct "$target_url"; then
               echo "warning: failed to open URL with host browser: $target_url" >&2
             fi
           done
@@ -400,6 +453,7 @@ stdenv.mkDerivation {
 
         nix_overlayfs_entry_cleanup() {
           local status=$?
+          trap - EXIT HUP INT TERM
           nix_overlayfs_stop_host_browser_broker || true
           if [ -d "$tempdir/overlay" ]; then
             nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
@@ -407,41 +461,54 @@ stdenv.mkDerivation {
             nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
           fi
           if [ -d "$tempdir/overlay" ]; then
-            ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null || true
+            ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null \
+              || ${pkgs.fuse3}/bin/fusermount3 -uz "$tempdir/overlay" 2>/dev/null \
+              || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null \
+              || true
           fi
           sleep 0.1
           pgrep -f "$tempdir" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
-          rm -r "$tempdir"
+          if ${pkgs.util-linux}/bin/mountpoint -q "$tempdir/overlay"; then
+            echo "warning: failed to unmount nix-overlayfs runtime at $tempdir/overlay" >&2
+          else
+            rm -r "$tempdir"
+            rmdir "$tmpbase" 2>/dev/null || true
+          fi
           exit "$status"
         }
 
-        if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
-          callback_url="''${2:-}"
-          if [ -z "$callback_url" ]; then
-            echo "Missing URL for --nix-overlayfs-open-url" >&2
-            exit 2
-          fi
+        ${lib.optionalString hostIntegration ''
+          if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
+            callback_url="''${2:-}"
+            if [ -z "$callback_url" ]; then
+              echo "Missing URL for --nix-overlayfs-open-url" >&2
+              exit 2
+            fi
 
-          active_pid=""
-          active_overlay=""
-          if [ -f "$state_dir/session.pid" ] && [ -f "$state_dir/overlay-root" ]; then
-            active_pid="$(cat "$state_dir/session.pid" 2>/dev/null || true)"
-            active_overlay="$(cat "$state_dir/overlay-root" 2>/dev/null || true)"
-          fi
+            active_pid=""
+            active_overlay=""
+            if [ -f "$state_dir/session.pid" ] && [ -f "$state_dir/overlay-root" ]; then
+              active_pid="$(cat "$state_dir/session.pid" 2>/dev/null || true)"
+              active_overlay="$(cat "$state_dir/overlay-root" 2>/dev/null || true)"
+            fi
 
-          if [ -n "$active_pid" ] \
-            && [ -n "$active_overlay" ] \
-            && [ -d "$active_overlay" ] \
-            && nix_overlayfs_active_session_exists; then
-            nix_overlayfs_load_session_env
-            ${activeUrlSchemeOpenInvocation}
-            exit $?
+            if [ -n "$active_pid" ] \
+              && [ -n "$active_overlay" ] \
+              && [ -d "$active_overlay" ] \
+              && nix_overlayfs_active_session_exists; then
+              nix_overlayfs_load_session_env
+              ${activeUrlSchemeOpenInvocation}
+              exit $?
+            fi
           fi
-        fi
+        ''}
 
         mkdir --parents "$appdir" "$tempdir/bind" "$tempdir/overlay" || exit 1
-        nix_overlayfs_start_host_browser_broker
+        ${lib.optionalString hostIntegration "nix_overlayfs_start_host_browser_broker"}
         trap nix_overlayfs_entry_cleanup EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
 
         namespace_mode="''${NIX_OVERLAYFS_NAMESPACE_MODE:-${namespaceMode}}"
         case "$namespace_mode" in
@@ -561,14 +628,16 @@ stdenv.mkDerivation {
 
           rm -rf "$overlay_workdir"
           mkdir -p "$overlay_workdir"
-          rm -f \
-            "$appdir/drive_c/windows/system32/start.exe" \
-            "$appdir/drive_c/windows/syswow64/start.exe"
-          mkdir -p \
-            "$appdir/drive_c/windows/system32" \
-            "$appdir/drive_c/windows/syswow64"
-          cp -f '${overlayfsLib.hostStartShim}/bin/x86_64/start.exe' "$appdir/drive_c/windows/system32/start.exe"
-          cp -f '${overlayfsLib.hostStartShim}/bin/i686/start.exe' "$appdir/drive_c/windows/syswow64/start.exe"
+          ${lib.optionalString hostIntegration ''
+            rm -f \
+              "$appdir/drive_c/windows/system32/start.exe" \
+              "$appdir/drive_c/windows/syswow64/start.exe"
+            mkdir -p \
+              "$appdir/drive_c/windows/system32" \
+              "$appdir/drive_c/windows/syswow64"
+            cp -f '${overlayfsLib.hostStartShim}/bin/x86_64/start.exe' "$appdir/drive_c/windows/system32/start.exe"
+            cp -f '${overlayfsLib.hostStartShim}/bin/i686/start.exe' "$appdir/drive_c/windows/syswow64/start.exe"
+          ''}
 
           ${pkgs.fuse-overlayfs}/bin/fuse-overlayfs \
             -o "lowerdir=$lowerdirs,upperdir=$appdir,workdir=$overlay_workdir" \
@@ -630,13 +699,18 @@ stdenv.mkDerivation {
           }
 
           nix_overlayfs_configure_host_browser() {
-            ${if session == null then ''
-              :
-            '' else ''
-              nix_overlayfs_upsert_user_reg_section 'Software\\Wine\\WineBrowser' <<EOF
-"Browsers"=$(nix_overlayfs_registry_string '${lib.getExe overlayfsLib.hostUrlOpener}')
-EOF
-            ''}
+            ${
+              if session == null || !hostIntegration then
+                ''
+                  :
+                ''
+              else
+                ''
+                                nix_overlayfs_upsert_user_reg_section 'Software\\Wine\\WineBrowser' <<EOF
+                  "Browsers"=$(nix_overlayfs_registry_string '${lib.getExe overlayfsLib.hostUrlOpener}')
+                  EOF
+                ''
+            }
           }
 
           nix_overlayfs_configure_host_browser_or_warn() {
@@ -646,28 +720,46 @@ EOF
           }
 
           nix_overlayfs_remove_start_shim() {
-            rm -f \
-              "$appdir/drive_c/windows/system32/start.exe" \
-              "$appdir/drive_c/windows/syswow64/start.exe"
+            ${
+              if hostIntegration then
+                ''
+                  rm -f \
+                    "$appdir/drive_c/windows/system32/start.exe" \
+                    "$appdir/drive_c/windows/syswow64/start.exe"
 
-            if [ -f "$tempdir/overlay/drive_c/windows/system32/start.exe" ] \
-              && cmp -s "$tempdir/overlay/drive_c/windows/system32/start.exe" '${overlayfsLib.hostStartShim}/bin/x86_64/start.exe'; then
-              rm -f "$tempdir/overlay/drive_c/windows/system32/start.exe"
-            fi
-            if [ -f "$tempdir/overlay/drive_c/windows/syswow64/start.exe" ] \
-              && cmp -s "$tempdir/overlay/drive_c/windows/syswow64/start.exe" '${overlayfsLib.hostStartShim}/bin/i686/start.exe'; then
-              rm -f "$tempdir/overlay/drive_c/windows/syswow64/start.exe"
-            fi
+                  if [ -f "$tempdir/overlay/drive_c/windows/system32/start.exe" ] \
+                    && cmp -s "$tempdir/overlay/drive_c/windows/system32/start.exe" '${overlayfsLib.hostStartShim}/bin/x86_64/start.exe'; then
+                    rm -f "$tempdir/overlay/drive_c/windows/system32/start.exe"
+                  fi
+                  if [ -f "$tempdir/overlay/drive_c/windows/syswow64/start.exe" ] \
+                    && cmp -s "$tempdir/overlay/drive_c/windows/syswow64/start.exe" '${overlayfsLib.hostStartShim}/bin/i686/start.exe'; then
+                    rm -f "$tempdir/overlay/drive_c/windows/syswow64/start.exe"
+                  fi
+                ''
+              else
+                ''
+                  :
+                ''
+            }
           }
 
           nix_overlayfs_enable_start_shim() {
-            case ";''${WINEDLLOVERRIDES:-};" in
-              *";start.exe=n,b;"*)
-                ;;
-              *)
-                export WINEDLLOVERRIDES="start.exe=n,b''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
-                ;;
-            esac
+            ${
+              if hostIntegration then
+                ''
+                  case ";''${WINEDLLOVERRIDES:-};" in
+                    *";start.exe=n,b;"*)
+                      ;;
+                    *)
+                      export WINEDLLOVERRIDES="start.exe=n,b''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+                      ;;
+                  esac
+                ''
+              else
+                ''
+                  :
+                ''
+            }
           }
 
           nix_overlayfs_shutdown_wine_prefix() {
@@ -689,6 +781,7 @@ EOF
           }
 
           ${urlSchemeRegistrationCommands}
+          ${overlayProcessCommands}
 
           nix_overlayfs_post_launch_ran=0
           nix_overlayfs_run_post_launch_once() {
@@ -700,15 +793,22 @@ EOF
 
           cleanup_runtime_session() {
             local status=$?
+            trap - EXIT HUP INT TERM
             nix_overlayfs_run_post_launch_once || true
             ${if session == null then "" else session.postCommands}
             nix_overlayfs_remove_start_shim || true
             nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
-            ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null || true
+            ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null \
+              || ${pkgs.fuse3}/bin/fusermount3 -uz "$tempdir/overlay" 2>/dev/null \
+              || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null \
+              || true
             exit $status
           }
 
           trap cleanup_runtime_session EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
 
           nix_overlayfs_process_url_requests() {
             local callback_url=""
@@ -736,7 +836,9 @@ EOF
           nix_overlayfs_launch_application() {
             local executable="$1"
             local -a launch_wd_args=()
-            local launch_working_directory="${if workingDirectory != null then "$tempdir/overlay/${workingDirectory}" else ""}"
+            local launch_working_directory="${
+              if workingDirectory != null then "$tempdir/overlay/${workingDirectory}" else ""
+            }"
             shift
 
             if [ -n "$launch_working_directory" ]; then
@@ -802,15 +904,20 @@ EOF
           }
 
           nix_overlayfs_prepare_launch_session() {
-            nix_overlayfs_configure_host_browser_or_warn
-            nix_overlayfs_register_url_handlers
-            ${urlSchemeRegistryCommands}
-            nix_overlayfs_enable_start_shim
+            :
+            ${lib.optionalString hostIntegration ''
+              nix_overlayfs_configure_host_browser_or_warn
+              nix_overlayfs_register_url_handlers
+              ${urlSchemeRegistryCommands}
+              nix_overlayfs_enable_start_shim
+            ''}
             ${extraPreLaunchCommands}
 
-            nix_overlayfs_write_state_file "$state_dir/session.pid" "$$"
-            nix_overlayfs_write_state_file "$state_dir/overlay-root" "$tempdir/overlay"
-            nix_overlayfs_record_session_env
+            ${lib.optionalString hostIntegration ''
+              nix_overlayfs_write_state_file "$state_dir/session.pid" "$$"
+              nix_overlayfs_write_state_file "$state_dir/overlay-root" "$tempdir/overlay"
+              nix_overlayfs_record_session_env
+            ''}
           }
 
           nix_overlayfs_run_launch_loop() {
@@ -819,7 +926,7 @@ EOF
             launch_status=0
 
             while [ "$launch_running" = 1 ] || nix_overlayfs_overlay_process_exists "$tempdir/overlay"; do
-              nix_overlayfs_process_url_requests
+              ${lib.optionalString hostIntegration "nix_overlayfs_process_url_requests"}
               if [ "$launch_running" = 1 ] && ! kill -0 "$launch_pid" 2>/dev/null; then
                 wait "$launch_pid" || launch_status=$?
                 launch_running=0
@@ -835,21 +942,23 @@ EOF
             return "$launch_status"
           }
 
-          if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
-            callback_url="''${2:-}"
-            if [ -z "$callback_url" ]; then
-              echo "Missing URL for --nix-overlayfs-open-url" >&2
-              exit 2
-            fi
+          ${lib.optionalString hostIntegration ''
+            if [ "''${1:-}" = "--nix-overlayfs-open-url" ]; then
+              callback_url="''${2:-}"
+              if [ -z "$callback_url" ]; then
+                echo "Missing URL for --nix-overlayfs-open-url" >&2
+                exit 2
+              fi
 
-            if nix_overlayfs_forward_url_to_active_session "$callback_url"; then
-              exit 0
-            fi
+              if nix_overlayfs_forward_url_to_active_session "$callback_url"; then
+                exit 0
+              fi
 
-            nix_overlayfs_prepare_launch_session
-            nix_overlayfs_run_launch_loop "$callback_url"
-            exit "$?"
-          fi
+              nix_overlayfs_prepare_launch_session
+              nix_overlayfs_run_launch_loop "$callback_url"
+              exit "$?"
+            fi
+          ''}
 
           nix_overlayfs_prepare_launch_session
           nix_overlayfs_run_launch_loop "$@"
@@ -885,9 +994,11 @@ EOF
     inherit
       basePackage
       executablePath
+      hostIntegration
       overlayDependencies
       launchProgram
       namespaceMode
+      stateMode
       ;
   };
 }

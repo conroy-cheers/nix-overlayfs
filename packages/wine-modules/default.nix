@@ -19,6 +19,17 @@ let
     let
       runtimeWithLayers = runtime // {
         baseEnvLayer = self.base-env;
+        selectBaseEnvLayer =
+          {
+            hostIntegration ? true,
+            managedRuntime ? "auto",
+          }:
+          if hostIntegration then
+            if managedRuntime == "disabled" then self.base-env-no-managed-runtime else self.base-env
+          else if managedRuntime == "disabled" then
+            self.base-env-headless
+          else
+            self.base-env-no-host-integration;
         autohotkeyLayer = self.autohotkey;
       };
       defaultScope = mkScope self;
@@ -30,6 +41,16 @@ let
       runtime = runtimeWithLayers;
 
       base-env = callPackage ./wine-base-env { };
+      base-env-headless = callPackage ./wine-base-env {
+        hostIntegration = false;
+        managedRuntime = "disabled";
+      };
+      base-env-no-host-integration = callPackage ./wine-base-env {
+        hostIntegration = false;
+      };
+      base-env-no-managed-runtime = callPackage ./wine-base-env {
+        managedRuntime = "disabled";
+      };
       autohotkey = callPackage ./autohotkey { };
       crypt32 = callPackage ./crypt32 { };
       dotnet-framework-4-8 = callPackage ./dotnet-framework-4-8 { };
