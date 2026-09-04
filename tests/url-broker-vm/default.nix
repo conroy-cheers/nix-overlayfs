@@ -23,8 +23,20 @@ else
         cat > url-probe.c <<'EOF'
         #include <windows.h>
         #include <shellapi.h>
-        #include <stdlib.h>
         #include <wchar.h>
+
+        static BOOL run_command(WCHAR *command) {
+          STARTUPINFOW startup_info = {0};
+          PROCESS_INFORMATION process_info = {0};
+          startup_info.cb = sizeof(startup_info);
+          if (!CreateProcessW(NULL, command, NULL, NULL, FALSE, 0, NULL, NULL, &startup_info, &process_info)) {
+            return FALSE;
+          }
+          WaitForSingleObject(process_info.hProcess, 10000);
+          CloseHandle(process_info.hThread);
+          CloseHandle(process_info.hProcess);
+          return TRUE;
+        }
 
         int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command_line, int show_command) {
           int argc = 0;
@@ -83,16 +95,10 @@ else
             NULL,
             SW_SHOWNORMAL
           );
-          _wsystem(L"cmd /c start https://example.invalid/login?state=from-cmd-start");
-          STARTUPINFOW startup_info = {0};
-          PROCESS_INFORMATION process_info = {0};
-          WCHAR command[] = L"cmd /c start https://example.invalid/login?client_id=probe^&response_type=code^&scope=openid+profile^&redirect_uri=https%3a%2f%2fexample.invalid%2fcomplete^&state=from-cmd-start-long";
-          startup_info.cb = sizeof(startup_info);
-          if (CreateProcessW(NULL, command, NULL, NULL, FALSE, 0, NULL, NULL, &startup_info, &process_info)) {
-            WaitForSingleObject(process_info.hProcess, 10000);
-            CloseHandle(process_info.hThread);
-            CloseHandle(process_info.hProcess);
-          }
+          WCHAR short_command[] = L"cmd /c start https://example.invalid/login?state=from-cmd-start";
+          run_command(short_command);
+          WCHAR long_command[] = L"cmd /c start https://example.invalid/login?client_id=probe^&response_type=code^&scope=openid+profile^&redirect_uri=https%3a%2f%2fexample.invalid%2fcomplete^&state=from-cmd-start-long";
+          run_command(long_command);
           Sleep(20000);
           return 0;
         }

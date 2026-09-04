@@ -282,7 +282,10 @@ stdenv.mkDerivation {
 
   installPhase = ''
     mkdir --parents $out/basePackage
-    mv ./prefix/* $out/basePackage/
+    # Wine's root control files, especially .update-timestamp, are part of
+    # the base-environment layer contract and must not be dropped by a glob.
+    find ./prefix -mindepth 1 -maxdepth 1 \
+      -exec mv --target-directory="$out/basePackage" -- {} +
   '';
 
   # mark package as non-executable

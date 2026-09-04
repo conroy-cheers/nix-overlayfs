@@ -45,6 +45,7 @@
   hostIntegration ? true,
   managedRuntime ? "auto",
   namespaceMode ? "auto",
+  processTerminationTimeout ? 5,
   stateMode ? "persistent",
   wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
@@ -319,7 +320,10 @@ let
                 fi
               done
             fi
-            cp --recursive "''${deps[$i]}"/basePackage/* ./wineprefix/
+            # Copy the directory itself so Wine control files such as
+            # .update-timestamp survive composition. A trailing glob silently
+            # drops dotfiles and makes Wine rerun Wow64Install on every layer.
+            cp --recursive "''${deps[$i]}"/basePackage/. ./wineprefix/
             chmod --recursive +rw ./wineprefix
           done
 
@@ -381,27 +385,33 @@ let
             json2reg userdef.new.json ./data/userdef.reg
           fi
 
-          pushd ./data/drive_c || exit 1
+          # A successful no-op installer can legitimately produce no drive_c
+          # delta once Wine's update marker is retained by the base layer.
+          if [ -d ./data/drive_c ]; then
+            pushd ./data/drive_c || exit 1
 
-          rm --force ${lib.concatMapStringsSep " " (x: "'${x}'") dupesToRemove}
-          rm --recursive --force \
-            ./windows/Installer \
-            ./users/nixbld/Desktop \
-            ./users/nixbld/AppData/Roaming/Microsoft/Windows/Templates \
-            ./users/nixbld/Documents \
-            ./users/nixbld/Music \
-            ./users/nixbld/Videos \
-            ./users/nixbld/Desktop \
-            ./users/nixbld/Pictures \
-            ./users/nixbld/Downloads
-          rm --force ${pathsToRemove}
-          find . -type d -empty -delete
-          popd || exit 1
+            rm --force ${lib.concatMapStringsSep " " (x: "'${x}'") dupesToRemove}
+            rm --recursive --force \
+              ./windows/Installer \
+              ./users/nixbld/Desktop \
+              ./users/nixbld/AppData/Roaming/Microsoft/Windows/Templates \
+              ./users/nixbld/Documents \
+              ./users/nixbld/Music \
+              ./users/nixbld/Videos \
+              ./users/nixbld/Desktop \
+              ./users/nixbld/Pictures \
+              ./users/nixbld/Downloads
+            rm --force ${pathsToRemove}
+            find . -type d -empty -delete
+            popd || exit 1
+          fi
         '';
 
       installPhase = ''
         mkdir $out
-        mv ./data/* $out
+        # A layer is the complete set of entries below its root, including
+        # dotfiles created by an installer.
+        find ./data -mindepth 1 -maxdepth 1 -exec mv --target-directory="$out" -- {} +
       '';
 
       passthru = {
@@ -423,6 +433,7 @@ mkOverlayfsPackage {
     executablePath
     hostIntegration
     namespaceMode
+    processTerminationTimeout
     stateMode
     workingDirectory
     entrypointWrapper

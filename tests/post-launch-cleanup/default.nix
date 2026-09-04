@@ -40,6 +40,11 @@ pkgs.stdenv.mkDerivation {
     grep -F 'trap cleanup_runtime_session EXIT' "$script"
     grep -F 'post-launch-sentinel' "$script"
 
+    entry_script="${package}/bin/post-launch-cleanup-unwrapped"
+    grep -F 'nix-overlayfs-runtime-supervisor' "$entry_script"
+    ! grep -F '/proc/[0-9]*/environ' "$script" "$entry_script"
+    ! grep -F 'pgrep -f' "$script" "$entry_script"
+
     normal_exit_calls="$(grep -Ec '^[[:space:]]*nix_overlayfs_run_post_launch_once$' "$script")"
     test "$normal_exit_calls" -eq 1
   '';

@@ -76,6 +76,20 @@ Direct mode keeps its mount under the user's private nix-overlayfs temporary
 directory and performs the normal explicit FUSE unmount and temporary-directory
 cleanup. It does not disable host AppArmor or user-namespace policy.
 
+## Runtime process supervision
+
+Each runtime session is launched below a dedicated Linux child subreaper. When
+the application session ends, nix-overlayfs first asks Wine to shut down
+cleanly, then terminates and reaps only processes descended from that session
+before unmounting its prefix. This contains double-forked and native helper
+processes without selecting processes globally by command line or environment.
+
+`processTerminationTimeout` controls the grace period between `SIGTERM` and
+`SIGKILL` and defaults to 5 seconds. It is accepted by `mkOverlayfsPackage`,
+`composeWindowsLayers`, `mkWindowsPackage`, and `mkWinpkgsPackage`. The runtime
+override `NIX_OVERLAYFS_PROCESS_TERMINATION_TIMEOUT` accepts a non-negative
+duration with an optional `ms`, `s`, `m`, `h`, or `d` suffix.
+
 ## Headless and ephemeral runtimes
 
 `composeWindowsLayers` can produce a one-shot, non-interactive runtime for CLI
@@ -113,6 +127,15 @@ supports Ubuntu's default AppArmor policy without changing host configuration.
 
 Package definitions can select `"required"` to require the namespace build or
 `"direct"` to always use the materialized build.
+
+## Windows layer contract
+
+A Windows layer contains every entry directly below its `basePackage` root,
+including dotfiles. Producers and consumers must therefore move or copy the
+directory contents rather than using a `*` glob. Wine's generated
+`.update-timestamp` belongs to the base-environment layer; application delta
+layers deliberately omit that runtime-owned control file while retaining any
+other hidden files created by their installers.
 
 ## Migrating from `composeWineLayers`
 

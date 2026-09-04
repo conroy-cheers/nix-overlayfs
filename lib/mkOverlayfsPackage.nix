@@ -19,6 +19,7 @@
   basePackageName ? basePackage.pname,
   hostIntegration ? true,
   namespaceMode ? "auto",
+  processTerminationTimeout ? 5,
   stateMode ? "persistent",
   urlSchemes ? [ ],
   urlSchemeDiscoveryCommands ? "",
@@ -52,6 +53,11 @@ let
       true
     else
       throw "stateMode must be one of: persistent, ephemeral";
+  _checkProcessTerminationTimeout =
+    if builtins.isInt processTerminationTimeout && processTerminationTimeout >= 0 then
+      true
+    else
+      throw "processTerminationTimeout must be a non-negative integer number of seconds";
   _checkHostIntegration =
     if
       hostIntegration
@@ -68,10 +74,12 @@ let
   explicitUrlSchemeCommands = lib.concatMapStringsSep "\n" (
     scheme: "printf '%s\\n' ${lib.escapeShellArg scheme}"
   ) urlSchemes;
+  runtimeSupervisor = pkgs.callPackage ./runtime-supervisor.nix { };
 in
 assert _checkUrlSchemes;
 assert _checkNamespaceMode;
 assert _checkStateMode;
+assert _checkProcessTerminationTimeout;
 assert _checkHostIntegration;
 stdenv.mkDerivation {
   pname = basePackage.pname + "-overlay";
@@ -433,41 +441,28 @@ stdenv.mkDerivation {
           rm -f "$host_browser_request_dir/.stop"
         }
 
-        nix_overlayfs_shutdown_wine_prefix() {
-          local overlay_root="$1"
-          local shutdown_timeout="''${NIX_OVERLAYFS_WINESERVER_SHUTDOWN_TIMEOUT:-30s}"
-          local kill_timeout="''${NIX_OVERLAYFS_WINESERVER_KILL_TIMEOUT:-5s}"
-          local wineserver="$(${pkgs.coreutils}/bin/dirname ${lib.escapeShellArg launchProgram})/wineserver"
-
-          [ -d "$overlay_root" ] || return 0
-          [ -x "$wineserver" ] || return 0
-
-          if ! ${pkgs.coreutils}/bin/timeout --foreground "$shutdown_timeout" \
-            env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null; then
-            echo "warning: wineserver --wait exceeded $shutdown_timeout for ${basePackageName}; killing remaining Wine processes before unmount" >&2
-            env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" -k 2>/dev/null || true
-            ${pkgs.coreutils}/bin/timeout --foreground "$kill_timeout" \
-              env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null || true
+        nix_overlayfs_forward_signal() {
+          local signal_name="$1"
+          if [ -n "$nix_overlayfs_supervisor_pid" ]; then
+            kill -s "$signal_name" "$nix_overlayfs_supervisor_pid" 2>/dev/null || true
           fi
         }
 
         nix_overlayfs_entry_cleanup() {
           local status=$?
           trap - EXIT HUP INT TERM
-          nix_overlayfs_stop_host_browser_broker || true
-          if [ -d "$tempdir/overlay" ]; then
-            nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
-            pgrep -f "$tempdir" 2>/dev/null | xargs -r kill 2>/dev/null || true
-            nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
+          if [ -n "$nix_overlayfs_supervisor_pid" ]; then
+            kill -TERM "$nix_overlayfs_supervisor_pid" 2>/dev/null || true
+            wait "$nix_overlayfs_supervisor_pid" 2>/dev/null || true
+            nix_overlayfs_supervisor_pid=""
           fi
+          nix_overlayfs_stop_host_browser_broker || true
           if [ -d "$tempdir/overlay" ]; then
             ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null \
               || ${pkgs.fuse3}/bin/fusermount3 -uz "$tempdir/overlay" 2>/dev/null \
               || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null \
               || true
           fi
-          sleep 0.1
-          pgrep -f "$tempdir" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
           if ${pkgs.util-linux}/bin/mountpoint -q "$tempdir/overlay"; then
             echo "warning: failed to unmount nix-overlayfs runtime at $tempdir/overlay" >&2
           else
@@ -504,11 +499,12 @@ stdenv.mkDerivation {
         ''}
 
         mkdir --parents "$appdir" "$tempdir/bind" "$tempdir/overlay" || exit 1
+        nix_overlayfs_supervisor_pid=""
         ${lib.optionalString hostIntegration "nix_overlayfs_start_host_browser_broker"}
         trap nix_overlayfs_entry_cleanup EXIT
-        trap 'exit 129' HUP
-        trap 'exit 130' INT
-        trap 'exit 143' TERM
+        trap 'nix_overlayfs_forward_signal HUP' HUP
+        trap 'nix_overlayfs_forward_signal INT' INT
+        trap 'nix_overlayfs_forward_signal TERM' TERM
 
         namespace_mode="''${NIX_OVERLAYFS_NAMESPACE_MODE:-${namespaceMode}}"
         case "$namespace_mode" in
@@ -535,14 +531,32 @@ stdenv.mkDerivation {
           fi
         fi
 
+        process_termination_timeout="''${NIX_OVERLAYFS_PROCESS_TERMINATION_TIMEOUT:-${toString processTerminationTimeout}s}"
+        supervisor=(
+          ${runtimeSupervisor}/bin/nix-overlayfs-runtime-supervisor
+          --term-timeout "$process_termination_timeout"
+          --mountpoint "$tempdir/overlay"
+          --label ${lib.escapeShellArg basePackageName}
+          --
+          "__STOREPATH__/libexec/${executableName}-setupEnv.sh"
+        )
+
         if [ "$namespace_mode" = direct ]; then
           export NIX_OVERLAYFS_DIRECT_MODE=1
-          "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
+          "''${supervisor[@]}" "$@" &
         else
           unset NIX_OVERLAYFS_DIRECT_MODE
-          ${pkgs.util-linux}/bin/unshare --map-root-user --mount "__STOREPATH__/libexec/${executableName}-setupEnv.sh" "$@"
+          ${pkgs.util-linux}/bin/unshare --map-root-user --mount "''${supervisor[@]}" "$@" &
         fi
-        launch_status=$?
+        nix_overlayfs_supervisor_pid=$!
+        while :; do
+          wait "$nix_overlayfs_supervisor_pid"
+          launch_status=$?
+          if ! jobs -pr | ${pkgs.gnugrep}/bin/grep -Fxq "$nix_overlayfs_supervisor_pid"; then
+            break
+          fi
+        done
+        nix_overlayfs_supervisor_pid=""
         exit "$launch_status"
       '';
 
@@ -763,21 +777,28 @@ stdenv.mkDerivation {
           }
 
           nix_overlayfs_shutdown_wine_prefix() {
-            local overlay_root="$1"
-            local shutdown_timeout="''${NIX_OVERLAYFS_WINESERVER_SHUTDOWN_TIMEOUT:-30s}"
-            local kill_timeout="''${NIX_OVERLAYFS_WINESERVER_KILL_TIMEOUT:-5s}"
-            local wineserver="$(${pkgs.coreutils}/bin/dirname ${lib.escapeShellArg launchProgram})/wineserver"
+            ${
+              if session != null && session ? commands && session.commands ? wineserver then
+                ''
+                  local overlay_root="$1"
+                  local shutdown_timeout="''${NIX_OVERLAYFS_WINESERVER_SHUTDOWN_TIMEOUT:-30s}"
+                  local kill_timeout="''${NIX_OVERLAYFS_WINESERVER_KILL_TIMEOUT:-5s}"
+                  local wineserver=${lib.escapeShellArg session.commands.wineserver}
 
-            [ -d "$overlay_root" ] || return 0
-            [ -x "$wineserver" ] || return 0
+                  [ -d "$overlay_root" ] || return 0
+                  [ -x "$wineserver" ] || return 0
 
-            if ! ${pkgs.coreutils}/bin/timeout --foreground "$shutdown_timeout" \
-              env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null; then
-              echo "warning: wineserver --wait exceeded $shutdown_timeout for ${basePackageName}; killing remaining Wine processes before unmount" >&2
-              env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" -k 2>/dev/null || true
-              ${pkgs.coreutils}/bin/timeout --foreground "$kill_timeout" \
-                env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null || true
-            fi
+                  if ! ${pkgs.coreutils}/bin/timeout --foreground "$shutdown_timeout" \
+                    env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null; then
+                    echo "warning: wineserver --wait exceeded $shutdown_timeout for ${basePackageName}; killing remaining Wine processes" >&2
+                    env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" -k 2>/dev/null || true
+                    ${pkgs.coreutils}/bin/timeout --foreground "$kill_timeout" \
+                      env WINEPREFIX="$overlay_root" WINEARCH="''${WINEARCH:-}" "$wineserver" --wait 2>/dev/null || true
+                  fi
+                ''
+              else
+                ":"
+            }
           }
 
           ${urlSchemeRegistrationCommands}
@@ -798,10 +819,6 @@ stdenv.mkDerivation {
             ${if session == null then "" else session.postCommands}
             nix_overlayfs_remove_start_shim || true
             nix_overlayfs_shutdown_wine_prefix "$tempdir/overlay" || true
-            ${pkgs.fuse3}/bin/fusermount3 -u "$tempdir/overlay" 2>/dev/null \
-              || ${pkgs.fuse3}/bin/fusermount3 -uz "$tempdir/overlay" 2>/dev/null \
-              || ${pkgs.util-linux}/bin/umount -l "$tempdir/overlay" 2>/dev/null \
-              || true
             exit $status
           }
 
@@ -998,6 +1015,7 @@ stdenv.mkDerivation {
       overlayDependencies
       launchProgram
       namespaceMode
+      processTerminationTimeout
       stateMode
       ;
   };

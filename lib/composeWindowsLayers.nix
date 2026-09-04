@@ -19,6 +19,7 @@
   hostIntegration ? true,
   managedRuntime ? "auto",
   namespaceMode ? "auto",
+  processTerminationTimeout ? 5,
   stateMode ? "persistent",
   runtimeEnvVars ? { },
   urlSchemes ? [ ],
@@ -110,6 +111,7 @@ mkOverlayfsPackage {
     entrypointWrapper
     hostIntegration
     namespaceMode
+    processTerminationTimeout
     session
     stateMode
     urlSchemes

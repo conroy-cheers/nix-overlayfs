@@ -20,6 +20,7 @@
   extraPathsToRemove ? [ ],
   silentFlags ? null,
   launchVncServer ? false,
+  processTerminationTimeout ? 5,
   wineserverWaitTimeout ? null,
   runtimeEnvVars ? { },
   ...
@@ -50,7 +51,9 @@ let
 
   matchingInstallersFor = arch: builtins.filter (x: x.Architecture == arch) manifest.Installers;
 
-  candidateInstallers = builtins.concatLists (builtins.map matchingInstallersFor preferredArchitectures);
+  candidateInstallers = builtins.concatLists (
+    builtins.map matchingInstallersFor preferredArchitectures
+  );
 
   # Select the installer files based on the preferred Windows binary architecture for the runtime.
   installer = builtins.head (
@@ -96,6 +99,7 @@ mkWindowsPackage {
     overlayDependencies
     extraPathsToRemove
     launchVncServer
+    processTerminationTimeout
     wineserverWaitTimeout
     runtimeEnvVars
     ;
