@@ -22,7 +22,10 @@ let
       ;
   };
 in
-lib.optionalAttrs (!isAarch64) {
+{
+  inherit (runtimeCatalog) makeNativeModules;
+}
+// lib.optionalAttrs (!isAarch64) {
   inherit (runtimeCatalog)
     nativeWin32HeadlessModules
     nativeWin32Modules

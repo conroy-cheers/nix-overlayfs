@@ -31,7 +31,9 @@ That internal package set contains:
 
 - `packages`: the flat default derivation set mirrored into the flake `packages` output
 - `apps`: the flat default app set mirrored into the flake `apps` output
-- `moduleScopes`: runtime/module scopes such as `nativeModules` and `x64FexModules`
+- `moduleScopes`: runtime/module scopes such as `nativeModules` and `x64FexModules`;
+  `makeNativeModules` constructs the same module set from custom Wine/runtime
+  arguments
 - `packageVariants`: namespaced derivation variants such as `x64Fex.notepad-plus-plus`
 - `appVariants`: namespaced app variants with the same runtime split
 

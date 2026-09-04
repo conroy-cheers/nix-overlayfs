@@ -18,6 +18,7 @@ let
   nativeRuntime = args: mkRuntime args;
 
   withModules = runtime: makeModules runtime;
+  makeNativeModules = args: withModules (nativeRuntime args);
 
   nativeWin32Modules = lib.optionalAttrs (!isAarch64) {
     runtime = nativeRuntime {
@@ -137,7 +138,10 @@ let
   nativeModules =
     if isAarch64 then withModules nativeArm64Runtime else withModules nativeWow64Modules.runtime;
 in
-lib.optionalAttrs (!isAarch64) {
+{
+  inherit makeNativeModules;
+}
+// lib.optionalAttrs (!isAarch64) {
   nativeWin32Modules = withModules nativeWin32Modules.runtime;
   nativeWin32HeadlessModules = withModules nativeWin32HeadlessModules.runtime;
   nativeWow64Modules = withModules nativeWow64Modules.runtime;
