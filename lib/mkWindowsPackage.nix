@@ -355,7 +355,9 @@ let
           rm --force ./data/.update-timestamp
           mkdir --parents ./data/bin
 
-          chmod --recursive a+rw ./
+          # Kernel overlayfs manages private workdir entries. Only the
+          # produced delta needs permission normalization before packaging.
+          chmod --recursive a+rw ./data
           rm --recursive --force "./data/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
           find ./data/ -type d -empty -delete
 
