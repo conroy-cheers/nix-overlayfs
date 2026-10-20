@@ -271,7 +271,7 @@ stdenv.mkDerivation {
         else
           ''env HOME="$HOME" WINEPREFIX="$tempdir/overlay" WINEARCH="$WINEARCH" WINEDEBUG="$WINEDEBUG" ${launchProgram} "$tempdir/overlay/${executablePath}" "$callback_url"'';
       urlSchemeOpenInvocation = ''
-        if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ]; then
+        if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ] || [ "''${nix_overlayfs_user_session:-0}" = 1 ]; then
           (
             ${lib.optionalString (
               workingDirectory != null
@@ -577,6 +577,9 @@ stdenv.mkDerivation {
             env: builtins.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (n: v: "export ${n}=${v}") env);
         in
         pkgs.writeShellScript "runEnv" ''
+          nix_overlayfs_user_session="''${NIX_OVERLAYFS_USER_SESSION:-0}"
+          unset NIX_OVERLAYFS_USER_SESSION
+          if [ "$nix_overlayfs_user_session" != 1 ]; then
           deps=(${pkgs.lib.strings.concatStringsSep " " deps});
           lowerdirs="__STOREPATH__/basePackage";
           overlay_workdir_parent="$(${pkgs.coreutils}/bin/dirname "$appdir")"
@@ -676,6 +679,15 @@ stdenv.mkDerivation {
 
           nix_overlayfs_hide_ld_so_preload
           ${if session == null then "" else session.preCommands}
+
+          # Mount first, then run hooks and the application with one user mapping.
+          # Separate mappings create separate Wine servers for the same prefix.
+          if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" != 1 ]; then
+            export state_dir
+            exec ${pkgs.util-linux}/bin/unshare --map-user="$originalUser" \
+              env NIX_OVERLAYFS_USER_SESSION=1 "$0" "$@"
+          fi
+          fi
 
           nix_overlayfs_registry_string() {
             local value="$1"
@@ -862,7 +874,7 @@ stdenv.mkDerivation {
               launch_wd_args=(--wd "$launch_working_directory")
             fi
 
-            if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ]; then
+            if [ "''${NIX_OVERLAYFS_DIRECT_MODE:-0}" = 1 ] || [ "''${nix_overlayfs_user_session:-0}" = 1 ]; then
               if [ -n "$launch_working_directory" ]; then
                 (
                   cd "$launch_working_directory"
