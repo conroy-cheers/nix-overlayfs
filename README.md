@@ -130,6 +130,23 @@ supports Ubuntu's default AppArmor policy without changing host configuration.
 Package definitions can select `"required"` to require the namespace build or
 `"direct"` to always use the materialized build.
 
+For native Wine installers that create directory junctions or symbolic links,
+set `portableReparsePoints = true;`. Nix builds may deny writes to extended
+attributes, and NAR archives do not preserve Wine's `user.WINEREPARSE`
+metadata. This option stores only directory reparse records inside the build's
+Wine prefix as temporary sidecar files and converts them to relative Unix
+symlinks before collecting the layer. It automatically selects a materialized
+build because kernel overlayfs can reject Wine's directory rename with
+`EXDEV`; it cannot be combined with `buildNamespaceMode = "required"`.
+
+A custom `unshareInstall` callback can call
+`${session.commands.normalizeReparsePoints} "$WINEPREFIX"` before native Linux
+tools need to follow installer-created links. Stop the relevant Wine processes
+before normalizing links they still use. The adapter is scoped to installation;
+it does not change host xattr policy or the runtime environment. Targets outside
+drive C, targets escaping the prefix, unsupported reparse types, and nonempty
+placeholder directories fail normalization rather than being discarded.
+
 ## Windows layer contract
 
 A Windows layer contains every entry directly below its `basePackage` root,
