@@ -15,12 +15,21 @@ else
       installPhase = ''
         mkdir -p "$out"
         touch "$out/probe"
+        mkdir -p "$out/drive_c/vendor"
+        printf rename > "$out/drive_c/vendor/rename-me"
+        printf delete > "$out/drive_c/vendor/delete-me"
       '';
     };
 
     launchProbe = pkgs.writeShellScript "namespace-modes-vm-probe" ''
       set -eu
       test -f "$1"
+      root="''${1%/probe}"
+      test "$(stat --format=%u "$root/drive_c/vendor/rename-me")" = "$(id --user)"
+      mv "$root/drive_c/vendor/rename-me" "$root/drive_c/vendor/renamed"
+      rm "$root/drive_c/vendor/delete-me"
+      test "$(cat "$root/drive_c/vendor/renamed")" = rename
+      test ! -e "$root/drive_c/vendor/delete-me"
       {
         printf 'direct=%s\n' "''${NIX_OVERLAYFS_DIRECT_MODE:-0}"
         printf 'mount_namespace=%s\n' "$(readlink /proc/self/ns/mnt)"
@@ -39,6 +48,7 @@ else
     name = "namespace-modes-vm";
 
     nodes.machine = {
+      programs.fuse.enable = true;
       users.users.alice = {
         isNormalUser = true;
         home = "/home/alice";
@@ -53,11 +63,15 @@ else
       init_namespace = machine.succeed("readlink /proc/1/ns/mnt").strip()
 
       def run_mode(mode):
-          machine.succeed(
+          machine.succeed("rm --recursive --force /home/alice/.local/share/namespace-modes-vm-base")
+          status, output = machine.execute(
               f"su - alice -c 'NIX_OVERLAYFS_NAMESPACE_MODE={mode} "
               f"NIX_OVERLAYFS_TEST_RESULT=/tmp/{mode}.result "
               f"${probePackage}/bin/namespace-modes-vm > /tmp/{mode}.log 2>&1'"
           )
+          if status != 0:
+              print(machine.succeed(f"cat /tmp/{mode}.log"))
+          assert status == 0, output
           result = machine.succeed(f"cat /tmp/{mode}.result")
           namespace = machine.succeed(
               f"sed -n 's/^mount_namespace=//p' /tmp/{mode}.result"

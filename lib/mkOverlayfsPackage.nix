@@ -654,7 +654,7 @@ stdenv.mkDerivation {
           ''}
 
           ${pkgs.fuse-overlayfs}/bin/fuse-overlayfs \
-            -o "lowerdir=$lowerdirs,upperdir=$appdir,workdir=$overlay_workdir" \
+            -o "lowerdir=$lowerdirs,upperdir=$appdir,workdir=$overlay_workdir,squash_to_uid=$(${pkgs.coreutils}/bin/id --user),squash_to_gid=$(${pkgs.coreutils}/bin/id --group)" \
             "$tempdir/overlay"
 
           cd "$tempdir/overlay/"
