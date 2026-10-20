@@ -159,6 +159,7 @@ else
     nodes.machine =
       { pkgs, ... }:
       {
+        programs.fuse.enable = true;
         users.users.alice = {
           isNormalUser = true;
           home = "/home/alice";
