@@ -24,6 +24,17 @@ writeShellScriptBin "reg2json" ''
 
   while read -r LINE; do
       IS_EMPTY=0
+      # Preserve Wine registry key flags alongside raw value entries. This
+      # unquoted sentinel cannot collide with a real Wine value name.
+      if [[ "$LINE" == "#link" && $INSIDE_ENTRY == 1 ]]; then
+          if [[ $VALUE_ISFIRST == 1 ]]; then
+              printf '"__wine_link":"1"'
+          else
+              printf ',"__wine_link":"1"'
+          fi
+          VALUE_ISFIRST=0
+          continue
+      fi
       if [[ "$LINE" == "#"* ]] && [[ "$LINE" != "#arch"* ]]; then
           continue
       fi
