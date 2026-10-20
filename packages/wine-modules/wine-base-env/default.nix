@@ -38,6 +38,10 @@ let
   prefixInitCommands =
     if runtime ? mkPrefixInitCommands then runtime.mkPrefixInitCommands session else "";
   wineMonoDownloads = {
+    "11.3.0" = {
+      url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.msi";
+      hash = "sha256-3y38FmXCURiC58q9Vur9DAo9lOWn6G+Wknf2wYnUGNM=";
+    };
     "11.1.0" = {
       url = "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.1.0/wine-mono-11.1.0-x86.msi";
       hash = "sha256-3rA0FDH4Jgsgn/9rx53cxUFLl/jpI2q5+9ykzlngqbk=";
@@ -91,8 +95,10 @@ let
   # https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono
   wineMonoVersion =
     {
+      "11.20" = "11.3.0";
       "11.10" = "11.1.0";
       "11.8" = "11.1.0";
+      "11.4" = "11.0.0";
       "11.3" = "11.0.0";
       "11.1" = "11.0.0";
       "11.0" = "11.0.0";
@@ -152,9 +158,9 @@ let
     export WINEDLLOVERRIDES="mscoree,mshtml=d''${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
   '';
 
-  wineMonoPatchCommands = lib.optionalString (wineMonoVersion == "11.1.0") ''
-    # wine-mono 11.1.0's MSI link custom actions fail under the Nix build
-    # sandbox with Wine 11.8. The payload and support MSI still install
+  wineMonoPatchCommands = lib.optionalString (builtins.elem wineMonoVersion [ "11.1.0" "11.3.0" ]) ''
+    # Wine Mono's MSI link custom actions fail under the Nix build
+    # sandbox with Wine 11.8 and 11.20. The payload and support MSI still install
     # cleanly without those deduplication/link actions.
     msibuild ./mono.msi -q "DELETE FROM InstallExecuteSequence WHERE Action = 'CREATELINKS'"
     msibuild ./mono.msi -q "DELETE FROM InstallExecuteSequence WHERE Action = 'CREATELINKS64'"
