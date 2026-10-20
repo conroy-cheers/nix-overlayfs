@@ -94,6 +94,11 @@ std::optional<Registry> parse_registry(const fs::path &path, std::string &error)
             continue;
         }
 
+        if (line == "#link" && !section.empty()) {
+            registry.keys[section]["__wine_link"] = "1";
+            continue;
+        }
+
         if (starts_with(line, "#")) {
             continue;
         }
@@ -151,7 +156,9 @@ bool write_registry(const fs::path &path, const Registry &registry)
         first_section = false;
 
         out << '[' << section << "]\n";
+        if (values.count("__wine_link")) out << "#link\n";
         for (const auto &[name, value] : values) {
+            if (name == "__wine_link") continue;
             out << name << '=' << value << '\n';
         }
     }
