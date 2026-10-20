@@ -192,6 +192,8 @@ let
         (lib.concatStringsSep "\n" (
           [
             ''
+              set -e
+
               cleanup_runtime_session() {
                 local status=$?
                 ${buildSession.postCommands}
